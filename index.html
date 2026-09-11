@@ -350,6 +350,7 @@
 (function () {
   'use strict';
   var KEY = 'saltday.v2';
+  var DAY_RESET = 6 * 60;          // 하루 경계 06:00. 새벽 0~6시는 전날에 속한다
   var WAKE_FLOOR = 6 * 60 + 30;   // 6:30 이전 기상은 6:30으로 간주
   var LAST_NAP_END = 17 * 60 + 25; // 마지막 낮잠 종료 고정
   var BATH_START = 18 * 60, BATH_END = 18 * 60 + 25, BED_END = 18 * 60 + 40;
@@ -405,7 +406,7 @@
   function parseHM(s) { if (!s) return null; var p = s.split(':'); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
   function nowMin() { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
   function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
-  function todayKey() { return dateKey(new Date()); }
+  function todayKey() { var d = new Date(); d.setMinutes(d.getMinutes() - DAY_RESET); return dateKey(d); }
   function prevKey(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); d.setDate(d.getDate() - 1); return dateKey(d); }
   function fmtDur(min) { if (min == null) return '-'; min = Math.max(0, Math.round(min)); var h = Math.floor(min / 60), m = min % 60; return (h ? h + '시간 ' : '') + m + '분'; }
   function fmtDate(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); var w = '일월화수목금토'[d.getDay()]; return +p[1] + '월 ' + +p[2] + '일 (' + w + ')'; }
@@ -542,7 +543,7 @@
     if (ui.tab === 'today') renderToday(); else renderLog();
   }
   // 태어난 날을 1일로 세는 한국식 (2026-09-09 = 100일)
-  function ageDays() { var b = new Date(2026, 5, 2); var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((t - b) / 86400000) + 1; }
+  function ageDays() { var b = new Date(2026, 5, 2); var p = todayKey().split('-'); var t = new Date(+p[0], +p[1] - 1, +p[2]); return Math.round((t - b) / 86400000) + 1; }
 
   function renderSummary() {
     var st = dayStats(todayKey());
@@ -649,7 +650,9 @@
   function tg(f, label, on) { return '<button class="tg' + (on ? ' on' : '') + '" data-act="tg" data-f="' + f + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + label + '</button>'; }
 
   function renderStart() {
+    var early = nowMin() < DAY_RESET;
     var h = '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
+      (early ? '<p class="note">새 하루는 06:00부터 시작할 수 있어요. 그 전 시간은 어제 밤으로 기록됩니다.</p>' : '') +
       '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button>' +
       '<button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
     h += '<div class="card"><button class="linkbtn" data-act="tpl">' + (ui.showTpl ? '▾ ' : '▸ ') + '소금이의 루틴</button>';
@@ -722,7 +725,11 @@
     var it = id ? findItem(id) : null;
     if (act === 'modal-ok') { var fn = pendingConfirm; closeConfirm(); if (fn) fn(); return; }
     if (act === 'modal-cancel') { closeConfirm(); return; }
-    if (act === 'start') { var v = parseHM(document.getElementById('startTime').value); if (v == null) { toast('시각을 입력해주세요'); return; } startDay(v); return; }
+    if (act === 'start') {
+      if (nowMin() < DAY_RESET) { toast('새 하루는 06:00부터 시작할 수 있어요'); return; }
+      var v = parseHM(document.getElementById('startTime').value); if (v == null) { toast('시각을 입력해주세요'); return; }
+      startDay(v); return;
+    }
     if (act === 'start-now') { document.getElementById('startTime').value = hm(nowMin()); return; }
     if (act === 'tm') {
       var inp = b.parentElement.querySelector('input[type="time"]'); if (!inp) return;
