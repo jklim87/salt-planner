@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#BFE3F5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="소금의 하루">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>소금의 하루</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  :root {
+    --bg: #E9F4FB;
+    --header: #BFE3F5;
+    --surface: #FFFFFF;
+    --surface2: #F2F8FC;
+    --ink: #1F3A52;
+    --muted: #5F7B93;
+    --line: #CFE3F0;
+    --accent: #3D8FD1;
+    --accent-ink: #FFFFFF;
+    --danger: #C9635A;
+    --chip-wake: #FFE9B5;
+    --chip-feed: #FFD6C2;
+    --chip-nap: #DCD6F7;
+    --chip-play: #CDEFD9;
+    --chip-bath: #BFE6F2;
+    --chip-bed: #C9D9F7;
+    --chip-ink: #1F3A52;
+    --shadow: 0 2px 10px rgba(31, 58, 82, 0.08);
+    --focus: #3D8FD1;
+    --scrim: rgba(31, 58, 82, 0.35);
+    --hdr-ink: #1F3A52;
+    --hdr-sub: #4C6C88;
+    --hdr-btn: rgba(255,255,255,0.5);
+    --now-bg: #D3EAF9;
+    --now-line: #3D8FD1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0F1B27;
+      --header: #1B3A52;
+      --surface: #172635;
+      --surface2: #1E3042;
+      --ink: #E6F0F7;
+      --muted: #93AEC4;
+      --line: #2A4256;
+      --accent: #6FB6EA;
+      --accent-ink: #0F1B27;
+      --danger: #E48A82;
+      --chip-wake: #5A4A1F;
+      --chip-feed: #5E3A2C;
+      --chip-nap: #3B3560;
+      --chip-play: #234A36;
+      --chip-bath: #1F4A5A;
+      --chip-bed: #2A3D5E;
+      --chip-ink: #E6F0F7;
+      --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      --scrim: rgba(0, 0, 0, 0.55);
+      --hdr-ink: #E6F0F7;
+      --hdr-sub: #B7CCDD;
+      --hdr-btn: rgba(255,255,255,0.12);
+      --now-bg: #234866;
+      --now-line: #6FB6EA;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0F1B27;
+    --header: #1B3A52;
+    --surface: #172635;
+    --surface2: #1E3042;
+    --ink: #E6F0F7;
+    --muted: #93AEC4;
+    --line: #2A4256;
+    --accent: #6FB6EA;
+    --accent-ink: #0F1B27;
+    --danger: #E48A82;
+    --chip-wake: #5A4A1F;
+    --chip-feed: #5E3A2C;
+    --chip-nap: #3B3560;
+    --chip-play: #234A36;
+    --chip-bath: #1F4A5A;
+    --chip-bed: #2A3D5E;
+    --chip-ink: #E6F0F7;
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --hdr-ink: #E6F0F7;
+    --hdr-sub: #B7CCDD;
+    --hdr-btn: rgba(255,255,255,0.12);
+    --now-bg: #234866;
+    --now-line: #6FB6EA;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .app { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; position: relative; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 5;
+    background: var(--header);
+    padding: 12px 16px 10px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header.top .icon { width: 48px; height: 48px; flex: none; }
+  header.top h1 {
+    margin: 0; font-family: "Gowun Dodum", "Noto Sans KR", sans-serif;
+    font-weight: 400; font-size: 24px; letter-spacing: 0.02em; line-height: 1.1; color: var(--hdr-ink);
+  }
+  header.top .date { font-size: 12.5px; color: var(--hdr-sub); margin-top: 2px; }
+  header.top .spacer { flex: 1; }
+  .iconbtn {
+    width: 38px; height: 38px; border-radius: 50%; border: 0;
+    background: var(--hdr-btn); color: var(--hdr-ink);
+    display: grid; place-items: center;
+  }
+
+  .summary {
+    position: sticky; top: 70px; z-index: 4;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    padding: 10px 12px;
+  }
+  .summary .cell { text-align: center; }
+  .summary .lbl { font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; }
+  .summary .val { font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .summary .val small { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+  main { flex: 1; padding: 14px 12px 96px; }
+
+  .card {
+    background: var(--surface); border-radius: 16px; box-shadow: var(--shadow);
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { margin: 0 0 8px; font-size: 16px; font-weight: 700; }
+  .card p.note { margin: 6px 0 0; }
+  .note { font-size: 13px; color: var(--muted); }
+
+  .startbox { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+  .startbox input[type="time"] {
+    flex: 1; min-width: 0; padding: 10px 8px; border-radius: 12px; border: 1px solid var(--line);
+    background: var(--surface2); font-size: 20px; font-variant-numeric: tabular-nums; text-align: center;
+  }
+  .startbox .pm { width: 38px; height: 46px; flex: none; }
+  .btn {
+    border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 700;
+    background: var(--accent); color: var(--accent-ink);
+  }
+  .btn.secondary { background: var(--surface2); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+  .btn.small { padding: 7px 12px; font-size: 13px; border-radius: 10px; }
+  .btn.danger { background: transparent; color: var(--danger); border: 1px solid var(--line); font-weight: 500; }
+  .linkbtn { border: 0; background: transparent; color: var(--accent); font-weight: 700; padding: 6px 0; font-size: 13.5px; }
+
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row {
+    background: var(--surface); border-radius: 14px; box-shadow: var(--shadow);
+    border-left: 5px solid transparent; overflow: hidden;
+  }
+  .row.now { border-left-color: var(--now-line); box-shadow: 0 0 0 2.5px var(--now-line), var(--shadow); }
+  .row .time.actual b, .row .time.actual { color: var(--accent); }
+  .row.done { opacity: 0.82; }
+  .row .head {
+    display: grid; grid-template-columns: 92px 1fr auto; gap: 10px; align-items: center;
+    padding: 11px 12px 11px 10px; width: 100%; border: 0; background: transparent; text-align: left;
+  }
+  .row .time { font-variant-numeric: tabular-nums; font-size: 13.5px; color: var(--muted); line-height: 1.3; }
+  .row .time b { display: block; color: var(--ink); font-weight: 700; font-size: 14.5px; }
+  .row .title { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .row .sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chip {
+    display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700;
+    color: var(--chip-ink);
+  }
+  .chip.wake { background: var(--chip-wake); }
+  .chip.bed { background: var(--chip-bed); }
+  .chip.feed { background: var(--chip-feed); }
+  .chip.nap { background: var(--chip-nap); }
+  .chip.play { background: var(--chip-play); }
+  .chip.bath { background: var(--chip-bath); }
+  .tick { color: var(--accent); font-weight: 700; font-size: 13px; }
+
+  .editor { padding: 4px 12px 14px 15px; border-top: 1px dashed var(--line); background: var(--surface2); }
+  .field { margin-top: 12px; }
+  .field label, .field .lab { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin-bottom: 5px; }
+  .timeinput { display: flex; gap: 6px; align-items: center; }
+  .timeinput input[type="time"] {
+    flex: 1; min-width: 0; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); font-variant-numeric: tabular-nums; font-size: 16px; text-align: center;
+  }
+  .pm {
+    width: 36px; height: 40px; flex: none; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); font-weight: 700; font-size: 18px; line-height: 1;
+  }
+  .presets { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .presets button.pre {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .presets button.pre.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .presets input[type="number"] {
+    width: 130px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface);
+    font-variant-numeric: tabular-nums; font-size: 16px;
+  }
+  .toggles { display: flex; gap: 8px; flex-wrap: wrap; }
+  .toggles button.tg {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 14px;
+  }
+  .toggles button.tg.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .wakings { display: flex; flex-direction: column; gap: 8px; }
+  .wk { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .wk .wl { display: grid; grid-template-columns: 56px 1fr; gap: 8px; align-items: center; font-size: 12.5px; color: var(--muted); }
+  .wk .wl .timeinput input[type="time"] { background: var(--surface2); }
+  .wk .alt { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+  .wk .alt .x { margin-left: auto; }
+  .wk .alt input[type="number"] { width: 74px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface2); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .wk .x { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface2); color: var(--danger); font-weight: 700; }
+  textarea.memo {
+    width: 100%; min-height: 64px; padding: 9px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--surface); resize: vertical;
+  }
+  .editor .actions { display: flex; gap: 8px; margin-top: 12px; justify-content: space-between; }
+
+  .addrow { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+  .addrow select { flex: 1; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+
+  .daycard .dhead { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; padding: 0; border: 0; background: transparent; width: 100%; text-align: left; }
+  .daycard .dname { font-weight: 700; font-size: 16px; }
+  .daycard .dstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
+  .daycard .stat { background: var(--surface2); border-radius: 10px; padding: 8px; text-align: center; }
+  .daycard .stat .l { font-size: 11px; color: var(--muted); }
+  .daycard .stat .v { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .log { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .log .li { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 13px; }
+  .log .li .t { font-variant-numeric: tabular-nums; color: var(--muted); }
+  .log .li .m { color: var(--muted); font-size: 12.5px; white-space: pre-wrap; }
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+
+  nav.tabs {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 6;
+    background: var(--surface); border-top: 1px solid var(--line);
+    padding: 6px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  nav.tabs .inner { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; }
+  nav.tabs button {
+    border: 0; background: transparent; padding: 6px 0 2px; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; font-weight: 700;
+  }
+  nav.tabs button.on { color: var(--accent); }
+  nav.tabs svg { width: 24px; height: 24px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%);
+    background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 999px; font-size: 13px;
+    opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 9; max-width: 90vw; text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  .menu {
+    position: absolute; right: 12px; top: 62px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; z-index: 8; min-width: 200px;
+  }
+  .menu button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 11px 14px; }
+  .menu button:hover { background: var(--surface2); }
+  .menu button.danger { color: var(--danger); }
+
+  .modal { position: fixed; inset: 0; background: var(--scrim); z-index: 20; display: grid; place-items: center; padding: 20px; }
+  .modal .box { background: var(--surface); border-radius: 16px; padding: 18px; max-width: 360px; width: 100%; box-shadow: var(--shadow); }
+  .modal .box p { margin: 0 0 14px; font-size: 15px; }
+  .modal .box .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M10 64 C12 52 20 47 32 47 C44 47 52 52 54 64 Z" fill="#BFE3F5"/>
+      <ellipse cx="32" cy="32" rx="24" ry="22" fill="#FFE3CF"/>
+      <ellipse cx="25" cy="16" rx="6" ry="2.6" fill="#FFFFFF" opacity="0.55"/>
+      <ellipse cx="32" cy="46" rx="14" ry="4" fill="#F3C9AE" opacity="0.7"/>
+      <circle cx="23" cy="30" r="2.2" fill="#1F3A52"/>
+      <circle cx="41" cy="30" r="2.2" fill="#1F3A52"/>
+      <path d="M19.5 25.5 q3.5 -2 7 0" stroke="#D9A98C" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      <path d="M37.5 25.5 q3.5 -2 7 0" stroke="#D9A98C" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      <circle cx="15.5" cy="37" r="4" fill="#FFB8B0" opacity="0.85"/>
+      <circle cx="48.5" cy="37" r="4" fill="#FFB8B0" opacity="0.85"/>
+      <ellipse cx="32" cy="40.5" rx="8" ry="5" fill="#6FB6EA"/>
+      <circle cx="32" cy="39.5" r="2.4" fill="#BFE3F5"/>
+      <circle cx="32" cy="44.5" r="3.6" fill="none" stroke="#3D8FD1" stroke-width="2.2"/>
+    </svg>
+    <div>
+      <h1>소금의 하루</h1>
+      <div class="date" id="hdrDate"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="menuBtn" aria-label="메뉴">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
+    </button>
+    <div class="menu" id="menu" hidden>
+      <button data-act="export-json">JSON으로 내려받기</button>
+      <button data-act="export-csv">CSV로 내려받기</button>
+      <button data-act="replan">지금부터 남은 일정 재계산</button>
+      <button data-act="reset-today" class="danger">오늘 기록 초기화</button>
+    </div>
+  </header>
+
+  <div class="summary" id="summary"></div>
+  <main id="view"></main>
+
+  <nav class="tabs">
+    <div class="inner">
+      <button id="tabToday" data-tab="today">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        오늘
+      </button>
+      <button id="tabLog" data-tab="log">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+        기록
+      </button>
+    </div>
+  </nav>
+  <div class="toast" id="toast"></div>
+  <div class="modal" id="modal" hidden>
+    <div class="box">
+      <p id="modalMsg"></p>
+      <div class="actions"><button class="btn secondary" data-act="modal-cancel">취소</button><button class="btn" data-act="modal-ok">확인</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var KEY = 'saltday.v2';
+  var WAKE_FLOOR = 6 * 60 + 30;   // 6:30 이전 기상은 6:30으로 간주
+  var LAST_NAP_END = 17 * 60 + 25; // 마지막 낮잠 종료 고정
+  var BATH_START = 18 * 60, BATH_END = 18 * 60 + 25, BED_END = 18 * 60 + 40;
+
+  var TYPES = {
+    wake: { label: '기상 후 수유', cls: 'wake' },
+    feed: { label: '수유', cls: 'feed' },
+    nap:  { label: '낮잠', cls: 'nap' },
+    play: { label: '기타/놀이', cls: 'play' },
+    bath: { label: '목욕', cls: 'bath' },
+    bed:  { label: '수유 후 입면', cls: 'bed' }
+  };
+
+  // 낮잠 개수별 깨시(분)와 낮잠 길이 가중치. 시작이 늦을수록 낮잠 개수가 줄고 깨시가 85→95로 늘어난다.
+  var CONFIGS = [
+    { ww: [80, 85, 85, 85, 85], w: [95, 50, 40, 30, 20] },
+    { ww: [85, 90, 90, 90],     w: [90, 55, 40, 30] },
+    { ww: [90, 95, 95],         w: [90, 60, 45] },
+    { ww: [95, 95],             w: [90, 60] },
+    { ww: [95],                 w: [90] }
+  ];
+  var NAP_MIN = 20, NAP_MAX = 119;
+
+  var state = load();
+  var ui = { tab: 'today', open: null, openDay: null, showTpl: false };
+  var pendingConfirm = null;
+  var downloadsNs = null;
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('downloads').then(function (ns) { downloadsNs = ns; }).catch(function () {});
+  }
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) { var s = JSON.parse(raw); if (s && s.days) { migrate(s); return s; } }
+    } catch (e) {}
+    return { days: {} };
+  }
+  function migrate(s) {
+    Object.keys(s.days).forEach(function (k) {
+      s.days[k].items.forEach(function (it) {
+        if ((it.type === 'nap' || it.type === 'bed') && !it.w) { it.w = it.awake > 0 ? [{ s: null, e: null, min: it.awake, ml: null }] : []; }
+        if (it.type === 'play') { it.pee = !!it.pee; it.poo1 = !!it.poo1; it.poo2 = !!it.poo2; }
+      });
+    });
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { toast('저장 실패: 저장공간을 확인해주세요'); }
+  }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function hm(min) { if (min == null || isNaN(min)) return ''; min = ((min % 1440) + 1440) % 1440; return pad(Math.floor(min / 60)) + ':' + pad(min % 60); }
+  function parseHM(s) { if (!s) return null; var p = s.split(':'); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
+  function nowMin() { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
+  function dateKey(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function todayKey() { return dateKey(new Date()); }
+  function prevKey(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); d.setDate(d.getDate() - 1); return dateKey(d); }
+  function fmtDur(min) { if (min == null) return '-'; min = Math.max(0, Math.round(min)); var h = Math.floor(min / 60), m = min % 60; return (h ? h + '시간 ' : '') + m + '분'; }
+  function fmtDate(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); var w = '일월화수목금토'[d.getDay()]; return +p[1] + '월 ' + +p[2] + '일 (' + w + ')'; }
+  function uid() { return Math.random().toString(36).slice(2, 9); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function span(a, b) { var d = b - a; if (d < 0) d += 1440; return d; }
+
+  function mkItem(type, ps, pe) {
+    var it = { id: uid(), type: type, ps: ps, pe: pe, as: null, ae: null, memo: '' };
+    if (type === 'wake' || type === 'feed' || type === 'bed') it.ml = null;
+    if (type === 'nap' || type === 'bed') it.w = [];   // 중간에 깬 구간 [{s, e, min, ml}]
+    if (type === 'play') { it.pee = false; it.poo1 = false; it.poo2 = false; }
+    return it;
+  }
+
+  // 낮잠 길이 배분: 가중치대로 나눈 뒤 최소/최대 캡 적용
+  function splitNaps(total, weights) {
+    var ws = weights.reduce(function (a, b) { return a + b; }, 0);
+    var arr = weights.map(function (x) { return Math.round(x / ws * total); });
+    var diff = total - arr.reduce(function (a, b) { return a + b; }, 0);
+    arr[arr.length - 1] += diff;
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] > NAP_MAX) { var over = arr[i] - NAP_MAX; arr[i] = NAP_MAX; if (i + 1 < arr.length) arr[i + 1] += over; }
+    }
+    return arr;
+  }
+
+  // anchor: 하루 시작(기상) 또는 재계산 시 마지막 낮잠 종료 시각. afterNap이면 첫 구간 앞에 수유를 넣는다.
+  function genFrom(anchor, afterNap) {
+    var items = [];
+    var chosen = null, naps = null;
+    for (var c = 0; c < CONFIGS.length; c++) {
+      var cfg = CONFIGS[c];
+      var ww = afterNap ? cfg.ww.map(function (x, i) { return i === 0 ? Math.max(x, 85) : x; }) : cfg.ww;
+      var total = LAST_NAP_END - anchor - ww.reduce(function (a, b) { return a + b; }, 0);
+      if (total < NAP_MIN * cfg.w.length) continue;
+      var arr = splitNaps(total, cfg.w);
+      if (arr.every(function (x) { return x >= NAP_MIN; })) { chosen = ww; naps = arr; break; }
+    }
+    var t = anchor;
+    if (!afterNap) { items.push(mkItem('wake', t, t + 15)); }
+    else { items.push(mkItem('feed', t + 5, t + 20)); }
+    var playFrom = t + (afterNap ? 20 : 15);
+    if (chosen) {
+      for (var i = 0; i < naps.length; i++) {
+        var napStart = t + chosen[i];
+        var napEnd = (i === naps.length - 1) ? LAST_NAP_END : napStart + naps[i];
+        if (napStart > playFrom) items.push(mkItem('play', playFrom, napStart));
+        items.push(mkItem('nap', napStart, napEnd));
+        t = napEnd;
+        if (i < naps.length - 1) { items.push(mkItem('feed', t + 5, t + 20)); playFrom = t + 20; }
+      }
+      items.push(mkItem('play', LAST_NAP_END, BATH_START));
+    } else {
+      // 낮잠을 넣을 시간이 없을 만큼 늦은 시작: 놀이로 채우고 취침만 고정
+      if (BATH_START > playFrom) items.push(mkItem('play', playFrom, BATH_START));
+    }
+    items.push(mkItem('bath', BATH_START, BATH_END));
+    items.push(mkItem('bed', BATH_END, BED_END));
+    return items;
+  }
+
+  function startDay(startMin) {
+    var s = Math.max(startMin, WAKE_FLOOR);
+    var key = todayKey();
+    var items = genFrom(s, false);
+    items[0].as = s;
+    state.days[key] = { date: key, start: s, items: items, created: Date.now() };
+    save();
+    ui.open = null;
+    render();
+    toast(startMin < WAKE_FLOOR ? '6:30 이전 기상은 6:30 기준으로 시간표를 짰어요' : '오늘 시간표를 만들었어요');
+  }
+
+  function replanToday() {
+    var day = state.days[todayKey()];
+    if (!day) { toast('먼저 오늘을 시작해주세요'); return; }
+    var running = day.items.filter(function (it) { return it.as != null && it.ae == null && it.type !== 'wake'; });
+    if (running.length) { toast('진행 중인 항목의 종료 시각을 먼저 입력해주세요'); return; }
+    var anchor = null, anchorType = null;
+    day.items.forEach(function (it) { if (it.ae != null && (anchor == null || it.ae > anchor)) { anchor = it.ae; anchorType = it.type; } });
+    if (anchor == null) { anchor = day.start; anchorType = 'wake'; }
+    if (anchor >= LAST_NAP_END - 30) { toast('저녁 일정은 고정이라 재계산할 것이 없어요'); return; }
+    var keep = day.items.filter(function (it) { return it.as != null || it.ae != null || it.pe <= anchor; });
+    var fresh;
+    if (anchorType === 'nap') {
+      fresh = genFrom(anchor, true);
+    } else {
+      // 낮잠 외 항목이 마지막이면, 직전 낮잠 종료(또는 기상)를 깨시 기준으로 잡고 남은 시간만 다시 채운다
+      var lastNapEnd = null;
+      day.items.forEach(function (it) { if (it.type === 'nap' && it.ae != null && (lastNapEnd == null || it.ae > lastNapEnd)) lastNapEnd = it.ae; });
+      var base = lastNapEnd != null ? lastNapEnd : day.start;
+      fresh = genFrom(base, lastNapEnd != null).filter(function (it) { return it.type !== 'wake' && it.ps >= anchor; });
+    }
+    fresh = fresh.filter(function (it) { return it.pe > anchor; });
+    day.items = keep.concat(fresh).sort(function (a, b) { return a.ps - b.ps; });
+    save(); render();
+    toast(hm(anchor) + ' 기준으로 남은 일정을 다시 짰어요');
+  }
+
+  // ---- 집계 ----
+  function wakeMin(w) { if (!w) return 0; if (w.s != null && w.e != null) return span(w.s, w.e); return w.min || 0; }
+  function wakeTotal(it) { return (it.w || []).reduce(function (a, w) { return a + wakeMin(w); }, 0); }
+  function wakeMl(it) { return (it.w || []).reduce(function (a, w) { return a + (w.ml || 0); }, 0); }
+  function napActual(it) { if (it.type !== 'nap' || it.as == null || it.ae == null) return 0; return Math.max(0, span(it.as, it.ae) - wakeTotal(it)); }
+  function dayStats(key) {
+    var day = state.days[key];
+    if (!day) return null;
+    var naps = 0, ml = 0, bed = null, pee = 0, poo1 = 0, poo2 = 0;
+    day.items.forEach(function (it) {
+      naps += napActual(it);
+      if (it.ml) ml += it.ml;
+      if (it.type === 'bed' && it.ae != null) bed = it.ae;
+      if (it.type === 'play') { if (it.pee) pee++; if (it.poo1) poo1++; if (it.poo2) poo2++; }
+    });
+    var prev = state.days[prevKey(key)];
+    var night = null, nightWake = 0, nightMl = 0;
+    if (prev) {
+      var pb = null;
+      prev.items.forEach(function (it) { if (it.type === 'bed') { pb = it.ae != null ? it.ae : it.pe; nightWake += wakeTotal(it); nightMl += wakeMl(it); } });
+      if (pb != null) { night = Math.max(0, (1440 - pb) + day.start - nightWake); }
+    }
+    return { naps: naps, ml: ml, bed: bed, night: night, nightWake: nightWake, nightMl: nightMl, pee: pee, poo1: poo1, poo2: poo2 };
+  }
+
+  // ---- 렌더 ----
+  var $view = document.getElementById('view'), $summary = document.getElementById('summary');
+
+  function render() {
+    document.getElementById('hdrDate').textContent = fmtDate(todayKey()) + ' · 생후 ' + ageDays() + '일';
+    document.getElementById('tabToday').classList.toggle('on', ui.tab === 'today');
+    document.getElementById('tabLog').classList.toggle('on', ui.tab === 'log');
+    renderSummary();
+    if (ui.tab === 'today') renderToday(); else renderLog();
+  }
+  // 태어난 날을 1일로 세는 한국식 (2026-09-09 = 100일)
+  function ageDays() { var b = new Date(2026, 5, 2); var t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((t - b) / 86400000) + 1; }
+
+  function renderSummary() {
+    var st = dayStats(todayKey());
+    var night = st && st.night != null ? fmtDur(st.night) : '-';
+    var naps = st ? fmtDur(st.naps) : '-';
+    var ml = st ? st.ml : 0;
+    var nightMl = st && st.nightMl ? '<small> +밤 ' + st.nightMl + '</small>' : '';
+    $summary.innerHTML =
+      '<div class="cell"><div class="lbl">밤잠</div><div class="val">' + night + '</div></div>' +
+      '<div class="cell"><div class="lbl">낮잠</div><div class="val">' + naps + '</div></div>' +
+      '<div class="cell"><div class="lbl">총 수유</div><div class="val">' + ml + '<small> ml</small>' + nightMl + '</div></div>';
+  }
+
+  function renderToday() {
+    var day = state.days[todayKey()];
+    if (!day) { renderStart(); return; }
+    var now = nowMin();
+    var html = '<div class="rows">';
+    day.items.forEach(function (it, idx) {
+      var T = TYPES[it.type];
+      var done = it.ae != null;
+      var ds = it.as != null ? it.as : it.ps, de = it.ae != null ? it.ae : it.pe;
+      var isNow = !done && ds <= now && now < de;   // 현재 시각이 이 카드 구간 안에 있을 때만 강조
+      var hasActual = it.as != null || it.ae != null;
+      var sub = actualLine(it);
+      var extra = '';
+      if (it.type === 'nap') extra = ' <span class="sub">' + (it.pe - it.ps) + '분</span>';
+      if (it.type === 'play' && day.items[idx + 1] && day.items[idx + 1].type === 'nap') extra = ' <span class="sub">깨시 ' + wakeWindow(day, idx) + '분</span>';
+      html += '<div class="row ' + (isNow ? 'now ' : '') + (done ? 'done' : '') + '" data-id="' + it.id + '">' +
+        '<button class="head" data-act="toggle" data-id="' + it.id + '">' +
+          '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(ds) + '</b>' + hm(de) + '</div>' +
+          '<div class="title"><div><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</div>' +
+          (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
+          '<div class="tick">' + (done ? '✓' : '') + '</div>' +
+        '</button>' +
+        (ui.open === it.id ? renderEditor(it) : '') +
+      '</div>';
+    });
+    html += '</div>';
+    html += '<div class="addrow"><select id="addType">' +
+      '<option value="play">기타/놀이 추가</option><option value="nap">낮잠 추가</option><option value="feed">수유 추가</option></select>' +
+      '<button class="btn secondary" data-act="add">추가</button></div>';
+    html += '<p class="note" style="margin:14px 4px 0">원칙: 취침 18:50~19:00 고정 · 깨시 85분(최대 95분) · 낮잠 회당 2시간 미만 · 6:30 이전 기상은 6:30부터 계산. 아침이 늦어진 만큼 낮잠 길이를 줄여 보정합니다.</p>';
+    $view.innerHTML = html;
+  }
+
+  function wakeWindow(day, idx) {
+    var next = day.items[idx + 1];
+    var from = null;
+    for (var i = idx; i >= 0; i--) { var p = day.items[i]; if (p.type === 'nap') { from = p.pe; break; } if (p.type === 'wake') { from = p.ps; break; } }
+    return from == null ? '-' : (next.ps - from);
+  }
+
+  function actualLine(it) {
+    var parts = [];
+    if (it.ml) parts.push(it.ml + 'ml');
+    if (it.type === 'nap' && it.as != null && it.ae != null) parts.push('순수 ' + napActual(it) + '분' + (wakeTotal(it) ? ' (깸 ' + wakeTotal(it) + '분)' : ''));
+    if (it.type === 'bed' && it.w && it.w.length) parts.push('밤중 깸 ' + it.w.length + '회 ' + wakeTotal(it) + '분' + (wakeMl(it) ? ' · 밤수유 ' + wakeMl(it) + 'ml' : ''));
+    if (it.type === 'play') { var d = []; if (it.pee) d.push('소변'); if (it.poo1) d.push('지림'); if (it.poo2) d.push('푸짐'); if (d.length) parts.push(d.join(' · ')); }
+    if (it.memo) parts.push(it.memo);
+    return esc(parts.join(' · '));
+  }
+
+  function renderEditor(it) {
+    var h = '<div class="editor" data-id="' + it.id + '">';
+    h += '<div class="field"><label>실제 시작</label>' + timeCtl('data-f="as"', it.as, true) + '</div>';
+    h += '<div class="field"><label>' + (it.type === 'bed' ? '입면 시각' : '실제 종료') + '</label>' + timeCtl('data-f="ae"', it.ae, true) + '</div>';
+    if (it.type === 'wake' || it.type === 'feed' || it.type === 'bed') {
+      h += '<div class="field"><label>수유량 (ml)</label><div class="presets">' +
+        [100, 130, 165].map(function (v) { return '<button class="pre' + (it.ml === v ? ' on' : '') + '" data-act="ml" data-v="' + v + '">' + v + '</button>'; }).join('') +
+        '<input type="number" inputmode="numeric" min="0" max="400" step="1" data-f="ml" value="' + (it.ml == null ? '' : it.ml) + '" placeholder="직접 입력"></div></div>';
+    }
+    if (it.type === 'nap' || it.type === 'bed') {
+      var isBed = it.type === 'bed';
+      h += '<div class="field"><div class="lab">' + (isBed ? '밤중에 깬 시간 (수유했으면 ml도)' : '중간에 깬 시간') + ' · 다시 잠든 시각을 모르면 분으로 적어도 돼요</div><div class="wakings">';
+      (it.w || []).forEach(function (w, i) {
+        var derived = (w.s != null && w.e != null);
+        h += '<div class="wk" data-i="' + i + '">' +
+          '<div class="wl"><span>깬 시각</span>' + timeCtl('data-wf="s"', w.s, false) + '</div>' +
+          '<div class="wl"><span>다시 잠</span>' + timeCtl('data-wf="e"', w.e, false) + '</div>' +
+          '<div class="alt">깨어 있던 <input type="number" inputmode="numeric" min="0" max="600" step="1" data-wf="min" value="' + (derived ? span(w.s, w.e) : (w.min == null ? '' : w.min)) + '"' + (derived ? ' disabled' : '') + '> 분' +
+          (isBed ? ' <span style="margin-left:8px">수유</span> <input type="number" inputmode="numeric" min="0" max="400" step="1" data-wf="ml" value="' + (w.ml == null ? '' : w.ml) + '" placeholder="ml">' : '') +
+          '<button class="x" data-act="wk-del" aria-label="삭제">×</button></div></div>';
+      });
+      h += '<button class="btn secondary small" data-act="wk-add" style="align-self:flex-start">+ 중간에 깬 시간 추가</button></div></div>';
+    }
+    if (it.type === 'play') {
+      h += '<div class="field"><div class="lab">기저귀 (해당하는 것 모두 선택)</div><div class="toggles">' +
+        tg('pee', '소변', it.pee) + tg('poo1', '지림 (똥)', it.poo1) + tg('poo2', '푸짐 (똥)', it.poo2) +
+        '</div></div>';
+    }
+    h += '<div class="field"><label>메모</label><textarea class="memo" data-f="memo" placeholder="있었던 일을 남겨두세요">' + esc(it.memo) + '</textarea></div>';
+    h += '<div class="actions"><button class="btn danger small" data-act="del">항목 삭제</button><button class="btn small" data-act="close">닫기</button></div>';
+    h += '</div>';
+    return h;
+  }
+  // 시간 입력 + 1분 단위 −/+ 버튼 (withNow: "지금" 버튼 포함)
+  function timeCtl(attr, val, withNow) {
+    return '<div class="timeinput"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button>' +
+      '<input type="time" ' + attr + ' value="' + hm(val) + '">' +
+      '<button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button>' +
+      (withNow ? '<button class="btn secondary small" data-act="now" ' + attr + '>지금</button>' : '') + '</div>';
+  }
+  function tg(f, label, on) { return '<button class="tg' + (on ? ' on' : '') + '" data-act="tg" data-f="' + f + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + label + '</button>'; }
+
+  function renderStart() {
+    var h = '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
+      '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button>' +
+      '<button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
+    h += '<div class="card"><button class="linkbtn" data-act="tpl">' + (ui.showTpl ? '▾ ' : '▸ ') + '소금이의 루틴</button>';
+    if (ui.showTpl) {
+      var tpl = genFrom(WAKE_FLOOR, false);
+      h += '<div class="log">';
+      tpl.forEach(function (it) {
+        var T = TYPES[it.type];
+        var extra = it.type === 'nap' ? ' (' + (it.pe - it.ps) + '분)' : '';
+        h += '<div class="li"><span class="t">' + hm(it.ps) + '~' + hm(it.pe) + '</span><span><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</span></div>';
+      });
+      h += '</div><p class="note">낮잠 총 3시간 55분 · 깨시 80~90분 · 입면 18:40, 취침 18:50~19:00 · 6:30 이전 기상은 6:30부터 계산</p>';
+    }
+    h += '</div>';
+    $view.innerHTML = h;
+  }
+
+  function renderLog() {
+    var keys = Object.keys(state.days).sort().reverse();
+    if (!keys.length) { $view.innerHTML = '<div class="empty">아직 기록이 없어요.<br>오늘 탭에서 하루를 시작하면 여기에 쌓여요.</div>'; return; }
+    var h = '';
+    keys.forEach(function (k) {
+      var day = state.days[k], st = dayStats(k);
+      var open = ui.openDay === k;
+      h += '<div class="card daycard"><button class="dhead" data-act="toggle-day" data-day="' + k + '">' +
+        '<span class="dname">' + fmtDate(k) + '</span><span class="note">기상 ' + (day.start != null ? hm(day.start) : '--:--') + ' · 입면 ' + (st.bed != null ? hm(st.bed) : '--:--') + '</span></button>' +
+        '<div class="dstats">' +
+          '<div class="stat"><div class="l">밤잠</div><div class="v">' + (st.night != null ? fmtDur(st.night) : '-') + '</div></div>' +
+          '<div class="stat"><div class="l">낮잠</div><div class="v">' + fmtDur(st.naps) + '</div></div>' +
+          '<div class="stat"><div class="l">수유</div><div class="v">' + st.ml + ' ml</div></div>' +
+        '</div>';
+      var extras = [];
+      if (st.pee || st.poo1 || st.poo2) extras.push('소변 ' + st.pee + ' · 지림 ' + st.poo1 + ' · 푸짐 ' + st.poo2);
+      if (st.nightWake || st.nightMl) extras.push('지난밤 깸 ' + st.nightWake + '분' + (st.nightMl ? ' · 밤수유 ' + st.nightMl + 'ml' : ''));
+      if (extras.length) h += '<p class="note">' + extras.join(' / ') + '</p>';
+      if (open) {
+        h += '<div class="log">';
+        day.items.forEach(function (it) {
+          var T = TYPES[it.type];
+          h += '<div class="li"><span class="t">' + (it.as != null ? hm(it.as) : hm(it.ps)) + '~' + (it.ae != null ? hm(it.ae) : (it.as != null ? '…' : hm(it.pe))) + '</span>' +
+            '<span><span class="chip ' + T.cls + '">' + T.label + '</span>' + (it.as == null && it.ae == null ? ' <span class="m">(계획, 미기록)</span>' : '') +
+            (actualLine(it) ? '<div class="m">' + actualLine(it) + '</div>' : '') + '</span></div>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    });
+    $view.innerHTML = h;
+  }
+
+  // ---- 확인창 (브라우저 confirm은 앱 안에서 막히므로 자체 구현) ----
+  function askConfirm(msg, fn) {
+    pendingConfirm = fn;
+    document.getElementById('modalMsg').textContent = msg;
+    document.getElementById('modal').hidden = false;
+  }
+  function closeConfirm() { pendingConfirm = null; document.getElementById('modal').hidden = true; }
+
+  // ---- 이벤트 ----
+  function findItem(id) { var day = state.days[todayKey()]; if (!day) return null; for (var i = 0; i < day.items.length; i++) if (day.items[i].id === id) return day.items[i]; return null; }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]');
+    var menu = document.getElementById('menu');
+    if (!e.target.closest('#menuBtn')) menu.hidden = true;
+    if (!b) return;
+    var act = b.dataset.act;
+    var editorEl = b.closest('.editor');
+    var id = b.dataset.id || (editorEl && editorEl.dataset.id);
+    var it = id ? findItem(id) : null;
+    if (act === 'modal-ok') { var fn = pendingConfirm; closeConfirm(); if (fn) fn(); return; }
+    if (act === 'modal-cancel') { closeConfirm(); return; }
+    if (act === 'start') { var v = parseHM(document.getElementById('startTime').value); if (v == null) { toast('시각을 입력해주세요'); return; } startDay(v); return; }
+    if (act === 'start-now') { document.getElementById('startTime').value = hm(nowMin()); return; }
+    if (act === 'tm') {
+      var inp = b.parentElement.querySelector('input[type="time"]'); if (!inp) return;
+      var cur = parseHM(inp.value); if (cur == null) cur = nowMin();
+      var nv = ((cur + parseInt(b.dataset.d, 10)) % 1440 + 1440) % 1440;
+      inp.value = hm(nv);
+      if (!it) return;                       // 시작 화면의 시각 입력은 값만 바꾼다
+      if (inp.dataset.wf) { var wrow = b.closest('.wk'); var ww = it.w[parseInt(wrow.dataset.i, 10)]; if (ww) ww[inp.dataset.wf] = nv; }
+      else if (inp.dataset.f) { it[inp.dataset.f] = nv; if (it.type === 'wake' && inp.dataset.f === 'as') state.days[todayKey()].start = nv; }
+      save(); render(); return;
+    }
+    if (act === 'tpl') { ui.showTpl = !ui.showTpl; render(); return; }
+    if (act === 'toggle') { ui.open = ui.open === id ? null : id; render(); return; }
+    if (act === 'close') { ui.open = null; render(); return; }
+    if (act === 'toggle-day') { ui.openDay = ui.openDay === b.dataset.day ? null : b.dataset.day; render(); return; }
+    if (act === 'now' && it) { it[b.dataset.f] = nowMin(); save(); render(); return; }
+    if (act === 'ml' && it) { it.ml = parseInt(b.dataset.v, 10); save(); render(); return; }
+    if (act === 'tg' && it) { var f = b.dataset.f; it[f] = !it[f]; save(); render(); return; }
+    if (act === 'wk-add' && it) {
+      it.w = it.w || [];
+      // 낮잠은 실제 시작, 입면은 입면 시각을 깬 시각의 기본값으로
+      var d0 = it.type === 'bed' ? (it.ae != null ? it.ae : it.pe) : (it.as != null ? it.as : it.ps);
+      it.w.push({ s: d0, e: null, min: null, ml: null }); save(); render(); return;
+    }
+    if (act === 'wk-del' && it) { var row = b.closest('.wk'); var i = parseInt(row.dataset.i, 10); it.w.splice(i, 1); save(); render(); return; }
+    if (act === 'del' && it) {
+      askConfirm('이 항목을 삭제할까요?', function () { var day = state.days[todayKey()]; day.items = day.items.filter(function (x) { return x.id !== id; }); ui.open = null; save(); render(); toast('삭제했어요'); });
+      return;
+    }
+    if (act === 'add') { addItem(document.getElementById('addType').value); return; }
+    if (act === 'export-json') { exportJSON(); return; }
+    if (act === 'export-csv') { exportCSV(); return; }
+    if (act === 'replan') { replanToday(); return; }
+    if (act === 'reset-today') {
+      if (!state.days[todayKey()]) { toast('오늘은 아직 시작하지 않았어요'); return; }
+      askConfirm('오늘 기록을 모두 지우고 처음부터 다시 시작할까요?', function () { delete state.days[todayKey()]; ui.open = null; save(); render(); toast('오늘 기록을 지웠어요'); });
+      return;
+    }
+  });
+  document.getElementById('menuBtn').addEventListener('click', function () { var m = document.getElementById('menu'); m.hidden = !m.hidden; });
+  document.querySelectorAll('nav.tabs button').forEach(function (b) { b.addEventListener('click', function () { ui.tab = b.dataset.tab; render(); }); });
+
+  document.addEventListener('change', function (e) {
+    var el = e.target; if (!el.dataset) return;
+    var editorEl = el.closest('.editor'); if (!editorEl) return;
+    var it = findItem(editorEl.dataset.id); if (!it) return;
+    if (el.dataset.wf) {
+      var row = el.closest('.wk'); var i = parseInt(row.dataset.i, 10); var w = it.w[i]; if (!w) return;
+      var wf = el.dataset.wf;
+      if (wf === 's' || wf === 'e') w[wf] = parseHM(el.value);
+      else if (wf === 'min') w.min = el.value === '' ? null : Math.max(0, parseInt(el.value, 10) || 0);
+      else if (wf === 'ml') w.ml = el.value === '' ? null : Math.max(0, parseInt(el.value, 10) || 0);
+      save(); render(); return;
+    }
+    var f = el.dataset.f; if (!f) return;
+    if (f === 'as' || f === 'ae') it[f] = parseHM(el.value);
+    else if (f === 'ml') it.ml = el.value === '' ? null : Math.max(0, parseInt(el.value, 10) || 0);
+    else if (f === 'memo') it.memo = el.value;
+    if (it.type === 'wake' && f === 'as' && it.as != null) { state.days[todayKey()].start = it.as; }
+    save();
+    if (f !== 'memo') render(); else renderSummary();
+  });
+  document.addEventListener('input', function (e) {
+    var el = e.target; if (!el.dataset || el.dataset.f !== 'memo') return;
+    var editorEl = el.closest('.editor'); if (!editorEl) return;
+    var it = findItem(editorEl.dataset.id); if (it) { it.memo = el.value; save(); }
+  });
+
+  function addItem(type) {
+    var day = state.days[todayKey()]; if (!day) return;
+    var n = nowMin();
+    var it = mkItem(type, n, n + (type === 'nap' ? 30 : 15));
+    it.as = n;
+    day.items.push(it);
+    day.items.sort(function (a, b) { return a.ps - b.ps; });
+    ui.open = it.id; save(); render();
+    toast(TYPES[type].label + ' 항목을 추가했어요');
+  }
+
+  // ---- 내보내기 ----
+  function exportJSON() { deliver('salt-day-' + todayKey() + '.json', JSON.stringify(state, null, 2)); }
+  function exportCSV() {
+    var cols = ['date', 'type', 'label', 'plan_start', 'plan_end', 'actual_start', 'actual_end', 'ml', 'awake_min', 'awake_count', 'night_feed_ml', 'pee', 'poo_small', 'poo_big', 'memo'];
+    var lines = [cols.join(',')];
+    Object.keys(state.days).sort().forEach(function (k) {
+      state.days[k].items.forEach(function (it) {
+        var hasW = it.type === 'nap' || it.type === 'bed';
+        var row = [k, it.type, TYPES[it.type].label, hm(it.ps), hm(it.pe), it.as != null ? hm(it.as) : '', it.ae != null ? hm(it.ae) : '',
+          it.ml == null ? '' : it.ml, hasW ? wakeTotal(it) : '', hasW ? (it.w || []).length : '', it.type === 'bed' ? wakeMl(it) : '',
+          it.type === 'play' ? (it.pee ? 1 : 0) : '', it.type === 'play' ? (it.poo1 ? 1 : 0) : '', it.type === 'play' ? (it.poo2 ? 1 : 0) : '', it.memo || ''];
+        lines.push(row.map(csvCell).join(','));
+      });
+    });
+    deliver('salt-day-' + todayKey() + '.csv', '﻿' + lines.join('\r\n'));
+  }
+  function csvCell(v) { var s = String(v == null ? '' : v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+
+  function deliver(filename, text) {
+    if (downloadsNs) {
+      downloadsNs.save({ filename: filename, data: text }).then(function () { toast('저장했어요: ' + filename); })
+        .catch(function (err) { if (err && err.code === 'declined') return; fallbackCopy(text); });
+      return;
+    }
+    try {
+      var blob = new Blob([text], { type: filename.slice(-4) === 'json' ? 'application/json' : 'text/csv' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+      setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 500);
+      toast('내려받기를 시작했어요');
+    } catch (e) { fallbackCopy(text); }
+  }
+  function fallbackCopy(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { toast('파일 저장이 막혀 있어 내용을 클립보드에 복사했어요'); }, function () { toast('내려받기를 할 수 없어요'); });
+    } else toast('이 환경에서는 내려받기를 할 수 없어요');
+  }
+
+  var toastTimer;
+  function toast(msg) { var t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2200); }
+
+  render();
+  setInterval(function () { if (ui.tab === 'today' && ui.open == null) render(); }, 60000);
+})();
+</script>
+</body>
+</html>

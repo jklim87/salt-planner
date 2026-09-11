@@ -1,0 +1,16 @@
+{
+  "name": "소금의 하루",
+  "short_name": "소금의 하루",
+  "description": "소금이의 하루 일과표를 자동으로 짜고 수유·낮잠·기저귀를 기록하는 앱",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#E9F4FB",
+  "theme_color": "#BFE3F5",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
