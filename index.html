@@ -156,10 +156,11 @@
 
   .startbox { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
   .startbox input[type="time"] {
-    flex: 1; min-width: 0; padding: 10px 8px; border-radius: 12px; border: 1px solid var(--line);
+    flex: 1; min-width: 150px; padding: 10px 8px; border-radius: 12px; border: 1px solid var(--line);
     background: var(--surface2); font-size: 20px; font-variant-numeric: tabular-nums; text-align: center;
   }
-  .startbox .pm { width: 38px; height: 46px; flex: none; }
+  .startbox .pm { width: 44px; height: 46px; flex: none; }
+  .startbox .btn { flex: 1; }
   .btn {
     border: 0; border-radius: 12px; padding: 12px 18px; font-weight: 700;
     background: var(--accent); color: var(--accent-ink);
@@ -200,9 +201,9 @@
   .editor { padding: 4px 12px 14px 15px; border-top: 1px dashed var(--line); background: var(--surface2); }
   .field { margin-top: 12px; }
   .field label, .field .lab { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin-bottom: 5px; }
-  .timeinput { display: flex; gap: 6px; align-items: center; }
+  .timeinput { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .timeinput input[type="time"] {
-    flex: 1; min-width: 0; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line);
+    flex: 1; min-width: 120px; padding: 8px 6px; border-radius: 10px; border: 1px solid var(--line);
     background: var(--surface); font-variant-numeric: tabular-nums; font-size: 16px; text-align: center;
   }
   .pm {
@@ -352,8 +353,8 @@
   var KEY = 'saltday.v2';
   var DAY_RESET = 6 * 60;          // 하루 경계 06:00. 새벽 0~6시는 전날에 속한다
   var WAKE_FLOOR = 6 * 60 + 30;   // 6:30 이전 기상은 6:30으로 간주
-  var LAST_NAP_END = 17 * 60 + 25; // 마지막 낮잠 종료 고정
-  var BATH_START = 18 * 60, BATH_END = 18 * 60 + 25, BED_END = 18 * 60 + 40;
+  var LAST_NAP_END = 17 * 60 + 10; // 마지막 낮잠 종료 고정 (17:10)
+  var BATH_START = 17 * 60 + 50, BATH_END = 18 * 60 + 10, BED_END = 18 * 60 + 40; // 목욕 17:50, 수유 후 입면 18:10~18:40
 
   var TYPES = {
     wake: { label: '기상 후 수유', cls: 'wake' },
@@ -364,15 +365,16 @@
     bed:  { label: '수유 후 입면', cls: 'bed' }
   };
 
-  // 낮잠 개수별 깨시(분)와 낮잠 길이 가중치. 시작이 늦을수록 낮잠 개수가 줄고 깨시가 85→95로 늘어난다.
+  // 기본 루틴(카라 3개월 샘플 기반): 깨시 85/85/85/90 + 마지막 90, 낮잠 120/90/45/40.
+  // ww: 각 낮잠 앞 깨시, w: 낮잠 길이 가중치, feedOff: 낮잠 종료 후 수유까지 간격(마지막 낮잠 뒤엔 수유 없음, 입면 수유로 대체).
+  // 시작이 늦으면 낮잠 길이를 비례로 줄이고, 그래도 부족하면 낮잠 개수를 줄이며 깨시를 95까지 늘린다.
   var CONFIGS = [
-    { ww: [80, 85, 85, 85, 85], w: [95, 50, 40, 30, 20] },
-    { ww: [85, 90, 90, 90],     w: [90, 55, 40, 30] },
-    { ww: [90, 95, 95],         w: [90, 60, 45] },
-    { ww: [95, 95],             w: [90, 60] },
-    { ww: [95],                 w: [90] }
+    { ww: [85, 85, 85, 90], w: [120, 90, 45, 40], feedOff: [0, 5, 45] },
+    { ww: [90, 95, 95],     w: [110, 60, 45],     feedOff: [0, 5] },
+    { ww: [95, 95],         w: [90, 60],          feedOff: [0] },
+    { ww: [95],             w: [90],              feedOff: [] }
   ];
-  var NAP_MIN = 20, NAP_MAX = 119;
+  var NAP_MIN = 20, NAP_MAX = 120;
 
   var state = load();
   var ui = { tab: 'today', open: null, openDay: null, showTpl: false };
@@ -437,19 +439,19 @@
   // anchor: 하루 시작(기상) 또는 재계산 시 마지막 낮잠 종료 시각. afterNap이면 첫 구간 앞에 수유를 넣는다.
   function genFrom(anchor, afterNap) {
     var items = [];
-    var chosen = null, naps = null;
+    var chosen = null, naps = null, feedOff = null;
     for (var c = 0; c < CONFIGS.length; c++) {
       var cfg = CONFIGS[c];
-      var ww = afterNap ? cfg.ww.map(function (x, i) { return i === 0 ? Math.max(x, 85) : x; }) : cfg.ww;
+      var ww = cfg.ww;
       var total = LAST_NAP_END - anchor - ww.reduce(function (a, b) { return a + b; }, 0);
       if (total < NAP_MIN * cfg.w.length) continue;
       var arr = splitNaps(total, cfg.w);
-      if (arr.every(function (x) { return x >= NAP_MIN; })) { chosen = ww; naps = arr; break; }
+      if (arr.every(function (x) { return x >= NAP_MIN; })) { chosen = ww; naps = arr; feedOff = cfg.feedOff; break; }
     }
     var t = anchor;
     if (!afterNap) { items.push(mkItem('wake', t, t + 15)); }
-    else { items.push(mkItem('feed', t + 5, t + 20)); }
-    var playFrom = t + (afterNap ? 20 : 15);
+    else { items.push(mkItem('feed', t, t + 15)); }
+    var playFrom = t + 15;
     if (chosen) {
       for (var i = 0; i < naps.length; i++) {
         var napStart = t + chosen[i];
@@ -457,7 +459,12 @@
         if (napStart > playFrom) items.push(mkItem('play', playFrom, napStart));
         items.push(mkItem('nap', napStart, napEnd));
         t = napEnd;
-        if (i < naps.length - 1) { items.push(mkItem('feed', t + 5, t + 20)); playFrom = t + 20; }
+        if (i < naps.length - 1) {
+          var off = feedOff[i] || 0;
+          if (off > 0) items.push(mkItem('play', t, t + off));
+          items.push(mkItem('feed', t + off, t + off + 15));
+          playFrom = t + off + 15;
+        }
       }
       items.push(mkItem('play', LAST_NAP_END, BATH_START));
     } else {
@@ -586,7 +593,7 @@
     html += '<div class="addrow"><select id="addType">' +
       '<option value="play">기타/놀이 추가</option><option value="nap">낮잠 추가</option><option value="feed">수유 추가</option></select>' +
       '<button class="btn secondary" data-act="add">추가</button></div>';
-    html += '<p class="note" style="margin:14px 4px 0">원칙: 취침 18:50~19:00 고정 · 깨시 85분(최대 95분) · 낮잠 회당 2시간 미만 · 6:30 이전 기상은 6:30부터 계산. 아침이 늦어진 만큼 낮잠 길이를 줄여 보정합니다.</p>';
+    html += '<p class="note" style="margin:14px 4px 0">원칙: 입면 18:40 고정 · 깨시 85~90분(최대 95분) · 낮잠 4회, 회당 2시간 이하 · 6:30 이전 기상은 6:30부터 계산. 아침이 늦어진 만큼 낮잠 길이를 줄여 보정합니다.</p>';
     $view.innerHTML = html;
   }
 
@@ -653,8 +660,8 @@
     var early = nowMin() < DAY_RESET;
     var h = '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
       (early ? '<p class="note">새 하루는 06:00부터 시작할 수 있어요. 그 전 시간은 어제 밤으로 기록됩니다.</p>' : '') +
-      '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button>' +
-      '<button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
+      '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button></div>' +
+      '<div class="startbox"><button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
     h += '<div class="card"><button class="linkbtn" data-act="tpl">' + (ui.showTpl ? '▾ ' : '▸ ') + '소금이의 루틴</button>';
     if (ui.showTpl) {
       var tpl = genFrom(WAKE_FLOOR, false);
@@ -664,7 +671,7 @@
         var extra = it.type === 'nap' ? ' (' + (it.pe - it.ps) + '분)' : '';
         h += '<div class="li"><span class="t">' + hm(it.ps) + '~' + hm(it.pe) + '</span><span><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</span></div>';
       });
-      h += '</div><p class="note">낮잠 총 3시간 55분 · 깨시 80~90분 · 입면 18:40, 취침 18:50~19:00 · 6:30 이전 기상은 6:30부터 계산</p>';
+      h += '</div><p class="note">카라 3개월 샘플 기반 · 낮잠 4회 총 4시간 55분 · 깨시 85 → 85 → 85 → 90 → 90분 · 입면 18:40 · 6:30 이전 기상은 6:30부터 계산</p>';
     }
     h += '</div>';
     $view.innerHTML = h;
