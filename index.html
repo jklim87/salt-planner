@@ -405,7 +405,8 @@
     { type: 'nap',  s: 595, e: 640 },  // 16:25~17:10 낮잠 45분
     { type: 'play', s: 640, e: 680 },  // 깨시 90 (입면까지)
     { type: 'bath', s: 680, e: 700 },  // 17:50 목욕
-    { type: 'bed',  s: 700, e: 730 }   // 18:10 수유 후 18:40 입면
+    { type: 'feed', s: 700, e: 715 },  // 18:10 수유
+    { type: 'bed',  s: 730, e: 730 }   // 18:40 입면 (밤잠, 다음날 기상까지)
   ];
 
   var TYPES = {
@@ -434,14 +435,23 @@
     return { days: {} };
   }
   function migrate(s) {
+    var t = now();
     Object.keys(s.days).forEach(function (k) {
       var d = s.days[k];
       if (d.su == null) d.su = 0;
+      var add = [];
       (d.items || []).forEach(function (it) {
         if (it.u == null) it.u = 0;
         if ((it.type === 'nap' || it.type === 'bed') && !it.w) { it.w = it.awake > 0 ? [{ s: null, e: null, min: it.awake, ml: null }] : []; }
         if (it.type === 'play') { it.pee = !!it.pee; it.poo1 = !!it.poo1; it.poo2 = !!it.poo2; }
+        if (it.type === 'bed' && it.v !== 2) {
+          // 구 형식(as=수유 시작, ae=입면, ml=수유량)을 수유 항목 + 밤잠(as=입면)으로 나눈다
+          add.push({ id: it.id + '_f', type: 'feed', ps: it.ps, pe: it.ps + 15, as: it.as, ae: it.ae, memo: '',
+                     ml: it.ml == null ? null : it.ml, u: t, del: !!it.del });
+          it.as = it.ae; it.ae = null; delete it.ml; it.ps = it.pe; it.v = 2; it.u = t;
+        }
       });
+      add.forEach(function (x) { d.items.push(x); });
     });
   }
   function save(push) {
@@ -469,7 +479,7 @@
 
   function mkItem(type, ps, pe) {
     var it = { id: uid(), type: type, ps: ps, pe: pe, as: null, ae: null, memo: '', u: now() };
-    if (type === 'wake' || type === 'feed' || type === 'bed') it.ml = null;
+    if (type === 'wake' || type === 'feed') it.ml = null;
     if (type === 'nap' || type === 'bed') it.w = [];   // 중간에 깬 구간 [{s, e, min, ml}]
     if (type === 'play') { it.pee = false; it.poo1 = false; it.poo2 = false; }
     return it;
@@ -497,8 +507,7 @@
     save();
     ui.open = null;
     render();
-    var bed = hm(s + 730);
-    toast((startMin < WAKE_FLOOR ? '6:30 기준으로 짰어요 · ' : '') + '입면 ' + bed + ' 예정');
+    toast((startMin < WAKE_FLOOR ? '6:30 기준으로 짰어요 · ' : '') + '입면 ' + hm(s + 730) + ' 예정');
   }
 
   // 실제 기록과 계획의 차이만큼 이후 일정을 통째로 민다
@@ -533,8 +542,8 @@
   }
   function labelOf(it) { return (it.type === 'nap' && isNightSleep(it)) ? '밤잠' : TYPES[it.type].label; }
   function clsOf(it) { return (it.type === 'nap' && isNightSleep(it)) ? 'bed' : TYPES[it.type].cls; }
-  // 밤잠(bed)은 ae가 입면 시각, 낮잠은 as가 잠든 시각
-  function sleepStart(it) { return it.type === 'bed' ? it.ae : it.as; }
+  // 잠든 시각. 밤잠(bed)의 ae는 같은 날 깨서 일어난 경우에만 쓰고, 보통은 다음날 기상 시각이 끝이다
+  function sleepStart(it) { return it.as; }
   function bedOf(day) { var r = null; liveItems(day).forEach(function (it) { if (it.type === 'bed') r = it; }); return r; }
 
   // 깬 구간을 자정 기준으로 나눈다. 잠든 시각보다 이른 시각이면 자정을 넘긴 것.
@@ -567,10 +576,13 @@
         else night += Math.max(0, (1440 - it.as) - sp.evening.min);   // 자정을 넘긴 잠은 오늘 몫만
       }
       if (it.type === 'bed') {
-        bedAt = it.ae;
+        bedAt = it.as;
         var sb = wakeSplit(it);
         nightWake += sb.evening.min; nightMl += sb.evening.ml; ml += sb.evening.ml;
-        if (it.ae != null) night += Math.max(0, dayEnd - it.ae - sb.evening.min);
+        if (it.as != null) {
+          if (it.ae != null && it.ae > it.as) night += Math.max(0, it.ae - it.as - sb.evening.min - sb.morning.min); // 같은 날 깨서 일어남
+          else night += Math.max(0, dayEnd - it.as - sb.evening.min);
+        }
       }
     });
 
@@ -578,7 +590,7 @@
     if (prev) {
       liveItems(prev).forEach(function (it) {
         var sp;
-        if (it.type === 'bed' && it.ae != null) {
+        if (it.type === 'bed' && it.as != null && !(it.ae != null && it.ae > it.as)) {
           sp = wakeSplit(it);
           nightWake += sp.morning.min; nightMl += sp.morning.ml; ml += sp.morning.ml;
           if (day.start != null) night += Math.max(0, day.start - sp.morning.min);
@@ -634,7 +646,7 @@
       if (sp.evening.min || sp.evening.ml) sub.push('자정 전 깸 ' + sp.evening.min + '분' + (sp.evening.ml ? ' · 수유 ' + sp.evening.ml + 'ml' : ''));
       if (sp.morning.min || sp.morning.ml) sub.push('자정 후 깸 ' + sp.morning.min + '분' + (sp.morning.ml ? ' · 수유 ' + sp.morning.ml + 'ml' : ''));
       if (b.memo) sub.push(b.memo);
-      var st = sleepStart(b), en = (b.type === 'bed') ? wake : (b.ae != null ? hm(b.ae) : '--:--');
+      var st = sleepStart(b), en = (b.ae != null) ? hm(b.ae) : ((b.type === 'bed') ? wake : '--:--');
       h += '<div class="row" data-id="' + b.id + '">' +
         '<button class="head" data-act="toggle" data-id="' + b.id + '">' +
           '<div class="time actual"><b>' + (st != null ? hm(st) : '--:--') + '</b>' + en + '</div>' +
@@ -656,16 +668,16 @@
       var T = TYPES[it.type];
       var done = it.ae != null;
       var ds = it.as != null ? it.as : it.ps, de = it.ae != null ? it.ae : it.pe;
-      var isNow = !done && ds <= n && n < de;
+      var isNow = it.type === 'bed' ? (!done && ds <= n) : (!done && ds <= n && n < de);
+      var timeTop = hm(ds), timeBottom = it.type === 'bed' ? (it.ae != null ? hm(it.ae) : '입면') : hm(de);
       var hasActual = it.as != null || it.ae != null;
       var sub = actualLine(it);
       var extra = '';
       if (it.type === 'nap') extra = ' <span class="sub">' + (it.pe - it.ps) + '분</span>';
-      if (it.type === 'nap' && isNightSleep(it)) extra += ' <span class="sub">18시 이후라 밤잠</span>';
       if (it.type === 'play' && list[idx + 1] && list[idx + 1].type === 'nap') extra = ' <span class="sub">깨시 ' + wakeWindow(list, idx) + '분</span>';
       html += '<div class="row ' + (isNow ? 'now ' : '') + (done ? 'done' : '') + '" data-id="' + it.id + '">' +
         '<button class="head" data-act="toggle" data-id="' + it.id + '">' +
-          '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(ds) + '</b>' + hm(de) + '</div>' +
+          '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + timeTop + '</b>' + timeBottom + '</div>' +
           '<div class="title"><div><span class="chip ' + clsOf(it) + '">' + labelOf(it) + '</span>' + extra + '</div>' +
           (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
           '<div class="tick">' + (done ? '✓' : '') + '</div>' +
@@ -700,9 +712,9 @@
 
   function renderEditor(it) {
     var h = '<div class="editor" data-id="' + it.id + '">';
-    h += '<div class="field"><label>실제 시작</label>' + timeCtl('data-f="as"', it.as, true) + '</div>';
-    h += '<div class="field"><label>' + (it.type === 'bed' ? '입면 시각' : '실제 종료') + '</label>' + timeCtl('data-f="ae"', it.ae, true) + '</div>';
-    if (it.type === 'wake' || it.type === 'feed' || it.type === 'bed') {
+    h += '<div class="field"><label>' + (it.type === 'bed' ? '입면 (잠든 시각)' : '실제 시작') + '</label>' + timeCtl('data-f="as"', it.as, true) + '</div>';
+    h += '<div class="field"><label>' + (it.type === 'bed' ? '기상 (다음날 아침이면 비워두세요)' : '실제 종료') + '</label>' + timeCtl('data-f="ae"', it.ae, true) + '</div>';
+    if (it.type === 'wake' || it.type === 'feed') {
       h += '<div class="field"><label>수유량 (ml)</label><div class="presets">' +
         [100, 130, 165].map(function (v) { return '<button class="pre' + (it.ml === v ? ' on' : '') + '" data-act="ml" data-v="' + v + '">' + v + '</button>'; }).join('') +
         '<input type="number" inputmode="numeric" min="0" max="400" step="1" data-f="ml" value="' + (it.ml == null ? '' : it.ml) + '" placeholder="직접 입력"></div></div>';
@@ -753,9 +765,10 @@
       genFrom(WAKE_FLOOR).forEach(function (it) {
         var T = TYPES[it.type];
         var extra = it.type === 'nap' ? ' (' + (it.pe - it.ps) + '분)' : '';
-        h += '<div class="li"><span class="t">' + hm(it.ps) + '~' + hm(it.pe) + '</span><span><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</span></div>';
+        var tt = it.type === 'bed' ? hm(it.ps) + ' 입면' : hm(it.ps) + '~' + hm(it.pe);
+        h += '<div class="li"><span class="t">' + tt + '</span><span><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</span></div>';
       });
-      h += '</div><p class="note">낮잠 4회 총 5시간 · 깨시 85 → 85 → 85 → 85 → 90분 · 입면 18:40 · 6:30 이전 기상은 6:30부터 계산 · 기상이 늦으면 전체가 그만큼 밀립니다</p>';
+      h += '</div><p class="note">낮잠 4회 총 5시간 · 깨시 85 → 85 → 85 → 85 → 90분 · 수유 18:10 후 입면 18:40 · 6:30 이전 기상은 6:30부터 계산 · 기상이 늦으면 전체가 그만큼 밀립니다</p>';
     }
     h += '</div>';
     $view.innerHTML = h;
@@ -783,7 +796,8 @@
         h += '<div class="log">';
         liveItems(day).slice().sort(function (a, b) { return a.ps - b.ps; }).forEach(function (it) {
           var T = TYPES[it.type];
-          h += '<div class="li"><span class="t">' + (it.as != null ? hm(it.as) : hm(it.ps)) + '~' + (it.ae != null ? hm(it.ae) : (it.as != null ? '…' : hm(it.pe))) + '</span>' +
+          var tEnd = it.type === 'bed' ? (it.ae != null ? hm(it.ae) : '아침') : (it.ae != null ? hm(it.ae) : (it.as != null ? '…' : hm(it.pe)));
+          h += '<div class="li"><span class="t">' + (it.as != null ? hm(it.as) : hm(it.ps)) + '~' + tEnd + '</span>' +
             '<span><span class="chip ' + clsOf(it) + '">' + labelOf(it) + '</span>' + (it.as == null && it.ae == null ? ' <span class="m">(계획, 미기록)</span>' : '') +
             (actualLine(it) ? '<div class="m">' + actualLine(it) + '</div>' : '') + '</span></div>';
         });
@@ -950,7 +964,7 @@
     if (act === 'wk-add' && it) {
       it.w = it.w || [];
       // 낮잠은 실제 시작, 입면은 입면 시각을 깬 시각의 기본값으로
-      var base = it.type === 'bed' ? (it.ae != null ? it.ae : it.pe) : (it.as != null ? it.as : it.ps);
+      var base = it.as != null ? it.as : it.ps;
       it.w.push({ s: base, e: null, min: null, ml: null }); touch(it); save(); render(); return;
     }
     if (act === 'wk-del' && it) { var row = b.closest('.wk'); it.w.splice(parseInt(row.dataset.i, 10), 1); touch(it); save(); render(); return; }
