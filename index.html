@@ -384,7 +384,8 @@
   'use strict';
   var KEY = 'saltday.v2';
   var SYNC_KEY = 'saltday.sync';
-  var DAY_RESET = 6 * 60;        // 하루 경계 06:00. 새벽 0~6시는 전날에 속한다
+  var DAY_RESET = 0;             // 하루 경계 00:00 (달력 날짜 기준)
+  var NIGHT_FROM = 18 * 60;      // 18시 이후 시작한 잠은 밤잠으로 본다
   var WAKE_FLOOR = 6 * 60 + 30;  // 6:30 이전 기상은 6:30으로 간주
 
   // 기본 루틴: 기상 시각으로부터의 경과 분. 기상이 늦으면 전체가 그만큼 통째로 뒤로 밀린다.
@@ -413,7 +414,7 @@
     nap:  { label: '낮잠', cls: 'nap' },
     play: { label: '기타/놀이', cls: 'play' },
     bath: { label: '목욕', cls: 'bath' },
-    bed:  { label: '수유 후 입면', cls: 'bed' }
+    bed:  { label: '밤잠', cls: 'bed' }
   };
 
   var state = load();
@@ -522,25 +523,73 @@
   function wakeMin(w) { if (!w) return 0; if (w.s != null && w.e != null) return span(w.s, w.e); return w.min || 0; }
   function wakeTotal(it) { return (it.w || []).reduce(function (a, w) { return a + wakeMin(w); }, 0); }
   function wakeMl(it) { return (it.w || []).reduce(function (a, w) { return a + (w.ml || 0); }, 0); }
-  function napActual(it) { if (it.type !== 'nap' || it.as == null || it.ae == null) return 0; return Math.max(0, span(it.as, it.ae) - wakeTotal(it)); }
+
+  // 18시 이후 시작한 잠은 밤잠으로 취급한다
+  function isNightSleep(it) {
+    if (it.type === 'bed') return true;
+    if (it.type !== 'nap') return false;
+    var s0 = it.as != null ? it.as : it.ps;
+    return s0 >= NIGHT_FROM;
+  }
+  function labelOf(it) { return (it.type === 'nap' && isNightSleep(it)) ? '밤잠' : TYPES[it.type].label; }
+  function clsOf(it) { return (it.type === 'nap' && isNightSleep(it)) ? 'bed' : TYPES[it.type].cls; }
+  // 밤잠(bed)은 ae가 입면 시각, 낮잠은 as가 잠든 시각
+  function sleepStart(it) { return it.type === 'bed' ? it.ae : it.as; }
+  function bedOf(day) { var r = null; liveItems(day).forEach(function (it) { if (it.type === 'bed') r = it; }); return r; }
+
+  // 깬 구간을 자정 기준으로 나눈다. 잠든 시각보다 이른 시각이면 자정을 넘긴 것.
+  function wakeSplit(it) {
+    var S = sleepStart(it), ev = { min: 0, ml: 0 }, mo = { min: 0, ml: 0 };
+    (it.w || []).forEach(function (w) {
+      var same = (S == null || w.s == null) ? true : (w.s >= S);
+      var t = same ? ev : mo;
+      t.min += wakeMin(w); t.ml += (w.ml || 0);
+    });
+    return { evening: ev, morning: mo };
+  }
+  function napActual(it) { if (it.as == null || it.ae == null) return 0; return Math.max(0, span(it.as, it.ae) - wakeTotal(it)); }
+
   function dayStats(key) {
     var day = getDay(key);
     if (!day) return null;
-    var naps = 0, ml = 0, bed = null, pee = 0, poo1 = 0, poo2 = 0;
-    liveItems(day).forEach(function (it) {
-      naps += napActual(it);
-      if (it.ml) ml += it.ml;
-      if (it.type === 'bed' && it.ae != null) bed = it.ae;
-      if (it.type === 'play') { if (it.pee) pee++; if (it.poo1) poo1++; if (it.poo2) poo2++; }
-    });
     var prev = getDay(prevKey(key));
-    var night = null, nightWake = 0, nightMl = 0;
+    var naps = 0, night = 0, ml = 0, bedAt = null, pee = 0, poo1 = 0, poo2 = 0, nightWake = 0, nightMl = 0;
+    var dayEnd = (key === todayKey()) ? Math.max(nowMin(), 1) : 1440;
+
+    liveItems(day).forEach(function (it) {
+      if (it.ml) ml += it.ml;
+      if (it.type === 'play') { if (it.pee) pee++; if (it.poo1) poo1++; if (it.poo2) poo2++; }
+      if (it.type === 'nap' && it.as != null && it.ae != null) {
+        if (!isNightSleep(it)) { naps += napActual(it); return; }
+        var sp = wakeSplit(it);
+        nightWake += sp.evening.min; nightMl += sp.evening.ml; ml += sp.evening.ml;
+        if (it.ae > it.as) night += Math.max(0, (it.ae - it.as) - sp.evening.min - sp.morning.min);
+        else night += Math.max(0, (1440 - it.as) - sp.evening.min);   // 자정을 넘긴 잠은 오늘 몫만
+      }
+      if (it.type === 'bed') {
+        bedAt = it.ae;
+        var sb = wakeSplit(it);
+        nightWake += sb.evening.min; nightMl += sb.evening.ml; ml += sb.evening.ml;
+        if (it.ae != null) night += Math.max(0, dayEnd - it.ae - sb.evening.min);
+      }
+    });
+
+    // 전날 밤잠 중 자정을 넘어온 부분과 그때의 수유는 오늘 몫
     if (prev) {
-      var pb = null;
-      liveItems(prev).forEach(function (it) { if (it.type === 'bed') { pb = it.ae != null ? it.ae : it.pe; nightWake += wakeTotal(it); nightMl += wakeMl(it); } });
-      if (pb != null) { night = Math.max(0, (1440 - pb) + day.start - nightWake); }
+      liveItems(prev).forEach(function (it) {
+        var sp;
+        if (it.type === 'bed' && it.ae != null) {
+          sp = wakeSplit(it);
+          nightWake += sp.morning.min; nightMl += sp.morning.ml; ml += sp.morning.ml;
+          if (day.start != null) night += Math.max(0, day.start - sp.morning.min);
+        } else if (it.type === 'nap' && isNightSleep(it) && it.as != null && it.ae != null && it.ae <= it.as) {
+          sp = wakeSplit(it);
+          nightWake += sp.morning.min; nightMl += sp.morning.ml; ml += sp.morning.ml;
+          night += Math.max(0, it.ae - sp.morning.min);
+        }
+      });
     }
-    return { naps: naps, ml: ml, bed: bed, night: night, nightWake: nightWake, nightMl: nightMl, pee: pee, poo1: poo1, poo2: poo2 };
+    return { naps: naps, night: night, ml: ml, bed: bedAt, nightWake: nightWake, nightMl: nightMl, pee: pee, poo1: poo1, poo2: poo2 };
   }
 
   // ---- 렌더 ----
@@ -559,14 +608,42 @@
 
   function renderSummary() {
     var st = dayStats(todayKey());
-    var night = st && st.night != null ? fmtDur(st.night) : '-';
+    var night = st ? fmtDur(st.night) : '-';
     var naps = st ? fmtDur(st.naps) : '-';
     var ml = st ? st.ml : 0;
-    var nightMl = st && st.nightMl ? '<small> +밤 ' + st.nightMl + '</small>' : '';
     $summary.innerHTML =
       '<div class="cell"><div class="lbl">밤잠</div><div class="val">' + night + '</div></div>' +
       '<div class="cell"><div class="lbl">낮잠</div><div class="val">' + naps + '</div></div>' +
-      '<div class="cell"><div class="lbl">총 수유</div><div class="val">' + ml + '<small> ml</small>' + nightMl + '</div></div>';
+      '<div class="cell"><div class="lbl">총 수유</div><div class="val">' + ml + '<small> ml</small></div></div>';
+  }
+
+  // 전날 밤잠을 오늘 화면 맨 위에 같이 보여준다. 같은 기록을 공유하므로 여기서 고치면 전날 기록이 바뀐다.
+  function renderPrevNight() {
+    var pk = prevKey(todayKey());
+    var prev = getDay(pk);
+    if (!prev) return '';
+    var list = liveItems(prev).filter(function (it) { return isNightSleep(it); })
+      .sort(function (a, b) { return (sleepStart(a) == null ? a.ps : sleepStart(a)) - (sleepStart(b) == null ? b.ps : sleepStart(b)); });
+    if (!list.length) return '';
+    var today = getDay(todayKey());
+    var wake = today && today.start != null ? hm(today.start) : '--:--';
+    var h = '<div class="rows" style="margin-bottom:8px">';
+    list.forEach(function (b, i) {
+      var sp = wakeSplit(b);
+      var sub = [];
+      if (sp.evening.min || sp.evening.ml) sub.push('자정 전 깸 ' + sp.evening.min + '분' + (sp.evening.ml ? ' · 수유 ' + sp.evening.ml + 'ml' : ''));
+      if (sp.morning.min || sp.morning.ml) sub.push('자정 후 깸 ' + sp.morning.min + '분' + (sp.morning.ml ? ' · 수유 ' + sp.morning.ml + 'ml' : ''));
+      if (b.memo) sub.push(b.memo);
+      var st = sleepStart(b), en = (b.type === 'bed') ? wake : (b.ae != null ? hm(b.ae) : '--:--');
+      h += '<div class="row" data-id="' + b.id + '">' +
+        '<button class="head" data-act="toggle" data-id="' + b.id + '">' +
+          '<div class="time actual"><b>' + (st != null ? hm(st) : '--:--') + '</b>' + en + '</div>' +
+          '<div class="title"><div><span class="chip bed">지난밤</span> <span class="sub">' + fmtDate(pk) + (list.length > 1 ? ' 밤잠 ' + (i + 1) : ' 밤잠') + '</span></div>' +
+          (sub.length ? '<div class="sub">' + esc(sub.join(' · ')) + '</div>' : '') + '</div>' +
+          '<div class="tick"></div>' +
+        '</button>' + (ui.open === b.id ? renderEditor(b) : '') + '</div>';
+    });
+    return h + '</div>';
   }
 
   function renderToday() {
@@ -574,7 +651,7 @@
     if (!day) { renderStart(); return; }
     var list = liveItems(day).slice().sort(function (a, b) { return a.ps - b.ps; });
     var n = nowMin();
-    var html = '<div class="rows">';
+    var html = renderPrevNight() + '<div class="rows">';
     list.forEach(function (it, idx) {
       var T = TYPES[it.type];
       var done = it.ae != null;
@@ -584,11 +661,12 @@
       var sub = actualLine(it);
       var extra = '';
       if (it.type === 'nap') extra = ' <span class="sub">' + (it.pe - it.ps) + '분</span>';
+      if (it.type === 'nap' && isNightSleep(it)) extra += ' <span class="sub">18시 이후라 밤잠</span>';
       if (it.type === 'play' && list[idx + 1] && list[idx + 1].type === 'nap') extra = ' <span class="sub">깨시 ' + wakeWindow(list, idx) + '분</span>';
       html += '<div class="row ' + (isNow ? 'now ' : '') + (done ? 'done' : '') + '" data-id="' + it.id + '">' +
         '<button class="head" data-act="toggle" data-id="' + it.id + '">' +
           '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(ds) + '</b>' + hm(de) + '</div>' +
-          '<div class="title"><div><span class="chip ' + T.cls + '">' + T.label + '</span>' + extra + '</div>' +
+          '<div class="title"><div><span class="chip ' + clsOf(it) + '">' + labelOf(it) + '</span>' + extra + '</div>' +
           (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>' +
           '<div class="tick">' + (done ? '✓' : '') + '</div>' +
         '</button>' +
@@ -599,7 +677,7 @@
     html += '<div class="addrow"><select id="addType">' +
       '<option value="play">기타/놀이 추가</option><option value="nap">낮잠 추가</option><option value="feed">수유 추가</option></select>' +
       '<button class="btn secondary" data-act="add">추가</button></div>';
-    html += '<p class="note" style="margin:14px 4px 0">기상 06:30 기준 루틴이고, 기상이 늦으면 전체가 그만큼 뒤로 밀립니다. 깨시 85~90분 · 낮잠 4회(105/85/65/45분) · 입면은 기상 12시간 10분 뒤.</p>';
+    html += '<p class="note" style="margin:14px 4px 0">기상 06:30 기준 루틴이고, 기상이 늦으면 전체가 그만큼 뒤로 밀립니다. 깨시 85~90분 · 낮잠 4회(105/85/65/45분) · 입면은 기상 12시간 10분 뒤. 18시 이후에 시작한 잠은 밤잠으로 집계합니다.</p>';
     $view.innerHTML = html;
   }
 
@@ -614,7 +692,7 @@
     var parts = [];
     if (it.ml) parts.push(it.ml + 'ml');
     if (it.type === 'nap' && it.as != null && it.ae != null) parts.push('순수 ' + napActual(it) + '분' + (wakeTotal(it) ? ' (깸 ' + wakeTotal(it) + '분)' : ''));
-    if (it.type === 'bed' && it.w && it.w.length) parts.push('밤중 깸 ' + it.w.length + '회 ' + wakeTotal(it) + '분' + (wakeMl(it) ? ' · 밤수유 ' + wakeMl(it) + 'ml' : ''));
+    if (it.type !== 'nap' && it.w && it.w.length) parts.push('밤중 깸 ' + it.w.length + '회 ' + wakeTotal(it) + '분' + (wakeMl(it) ? ' · 밤수유 ' + wakeMl(it) + 'ml' : ''));
     if (it.type === 'play') { var d = []; if (it.pee) d.push('소변'); if (it.poo1) d.push('지림'); if (it.poo2) d.push('푸짐'); if (d.length) parts.push(d.join(' · ')); }
     if (it.memo) parts.push(it.memo);
     return esc(parts.join(' · '));
@@ -630,8 +708,8 @@
         '<input type="number" inputmode="numeric" min="0" max="400" step="1" data-f="ml" value="' + (it.ml == null ? '' : it.ml) + '" placeholder="직접 입력"></div></div>';
     }
     if (it.type === 'nap' || it.type === 'bed') {
-      var isBed = it.type === 'bed';
-      h += '<div class="field"><div class="lab">' + (isBed ? '밤중에 깬 시간 (수유했으면 ml도)' : '중간에 깬 시간') + ' · 다시 잠든 시각을 모르면 분으로 적어도 돼요</div><div class="wakings">';
+      var isBed = isNightSleep(it);
+      h += '<div class="field"><div class="lab">' + (isBed ? '밤중에 깬 시간 · 수유 (자정 이후 수유는 다음날 총량에 들어가요)' : '중간에 깬 시간') + ' · 다시 잠든 시각을 모르면 분으로 적어도 돼요</div><div class="wakings">';
       (it.w || []).forEach(function (w, i) {
         var derived = (w.s != null && w.e != null);
         h += '<div class="wk" data-i="' + i + '">' +
@@ -641,7 +719,7 @@
           (isBed ? ' <span style="margin-left:8px">수유</span> <input type="number" inputmode="numeric" min="0" max="400" step="1" data-wf="ml" value="' + (w.ml == null ? '' : w.ml) + '" placeholder="ml">' : '') +
           '<button class="x" data-act="wk-del" aria-label="삭제">×</button></div></div>';
       });
-      h += '<button class="btn secondary small" data-act="wk-add" style="align-self:flex-start">+ 중간에 깬 시간 추가</button></div></div>';
+      h += '<button class="btn secondary small" data-act="wk-add" style="align-self:flex-start">+ ' + (isBed ? '밤중 깸 · 수유 추가' : '중간에 깬 시간 추가') + '</button></div></div>';
     }
     if (it.type === 'play') {
       h += '<div class="field"><div class="lab">기저귀 (해당하는 것 모두 선택)</div><div class="toggles">' +
@@ -663,9 +741,10 @@
   function tg(f, label, on) { return '<button class="tg' + (on ? ' on' : '') + '" data-act="tg" data-f="' + f + '" aria-pressed="' + (on ? 'true' : 'false') + '">' + label + '</button>'; }
 
   function renderStart() {
-    var early = nowMin() < DAY_RESET;
-    var h = '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
-      (early ? '<p class="note">새 하루는 06:00부터 시작할 수 있어요. 그 전 시간은 어제 밤으로 기록됩니다.</p>' : '') +
+    var early = nowMin() < 5 * 60;
+    var h = renderPrevNight();
+    h += '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
+      (early ? '<p class="note">아직 새벽이에요. 위의 지난밤 기록만 남기고, 아침에 시작을 눌러주세요.</p>' : '') +
       '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button></div>' +
       '<div class="startbox"><button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
     h += '<div class="card"><button class="linkbtn" data-act="tpl">' + (ui.showTpl ? '▾ ' : '▸ ') + '소금이의 루틴</button>';
@@ -692,20 +771,20 @@
       h += '<div class="card daycard"><button class="dhead" data-act="toggle-day" data-day="' + k + '">' +
         '<span class="dname">' + fmtDate(k) + '</span><span class="note">기상 ' + (day.start != null ? hm(day.start) : '--:--') + ' · 입면 ' + (st.bed != null ? hm(st.bed) : '--:--') + '</span></button>' +
         '<div class="dstats">' +
-          '<div class="stat"><div class="l">밤잠</div><div class="v">' + (st.night != null ? fmtDur(st.night) : '-') + '</div></div>' +
+          '<div class="stat"><div class="l">밤잠</div><div class="v">' + fmtDur(st.night) + '</div></div>' +
           '<div class="stat"><div class="l">낮잠</div><div class="v">' + fmtDur(st.naps) + '</div></div>' +
           '<div class="stat"><div class="l">수유</div><div class="v">' + st.ml + ' ml</div></div>' +
         '</div>';
       var extras = [];
       if (st.pee || st.poo1 || st.poo2) extras.push('소변 ' + st.pee + ' · 지림 ' + st.poo1 + ' · 푸짐 ' + st.poo2);
-      if (st.nightWake || st.nightMl) extras.push('지난밤 깸 ' + st.nightWake + '분' + (st.nightMl ? ' · 밤수유 ' + st.nightMl + 'ml' : ''));
+      if (st.nightWake || st.nightMl) extras.push('밤중 깸 ' + st.nightWake + '분' + (st.nightMl ? ' · 밤수유 ' + st.nightMl + 'ml (총량 포함)' : ''));
       if (extras.length) h += '<p class="note">' + extras.join(' / ') + '</p>';
       if (open) {
         h += '<div class="log">';
         liveItems(day).slice().sort(function (a, b) { return a.ps - b.ps; }).forEach(function (it) {
           var T = TYPES[it.type];
           h += '<div class="li"><span class="t">' + (it.as != null ? hm(it.as) : hm(it.ps)) + '~' + (it.ae != null ? hm(it.ae) : (it.as != null ? '…' : hm(it.pe))) + '</span>' +
-            '<span><span class="chip ' + T.cls + '">' + T.label + '</span>' + (it.as == null && it.ae == null ? ' <span class="m">(계획, 미기록)</span>' : '') +
+            '<span><span class="chip ' + clsOf(it) + '">' + labelOf(it) + '</span>' + (it.as == null && it.ae == null ? ' <span class="m">(계획, 미기록)</span>' : '') +
             (actualLine(it) ? '<div class="m">' + actualLine(it) + '</div>' : '') + '</span></div>';
         });
         h += '</div>';
@@ -822,9 +901,12 @@
 
   // ---- 이벤트 ----
   function findItem(id) {
-    var day = getDay(todayKey()); if (!day) return null;
-    var list = liveItems(day);
-    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    var keys = [todayKey(), prevKey(todayKey())];   // 전날 밤잠도 오늘 화면에서 고칠 수 있다
+    for (var k = 0; k < keys.length; k++) {
+      var day = getDay(keys[k]); if (!day) continue;
+      var list = liveItems(day);
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    }
     return null;
   }
 
@@ -844,7 +926,6 @@
     if (act === 'sync-save') { saveSync(document.getElementById('syncUrl').value); return; }
     if (act === 'sync-off') { saveSync(''); return; }
     if (act === 'start') {
-      if (nowMin() < DAY_RESET) { toast('새 하루는 06:00부터 시작할 수 있어요'); return; }
       var v = parseHM(document.getElementById('startTime').value); if (v == null) { toast('시각을 입력해주세요'); return; }
       startDay(v); return;
     }
@@ -934,13 +1015,14 @@
   // ---- 내보내기 ----
   function exportJSON() { deliver('salt-day-' + todayKey() + '.json', JSON.stringify(state, null, 2)); }
   function exportCSV() {
-    var cols = ['date', 'type', 'label', 'plan_start', 'plan_end', 'actual_start', 'actual_end', 'ml', 'awake_min', 'awake_count', 'night_feed_ml', 'pee', 'poo_small', 'poo_big', 'memo'];
+    var cols = ['date', 'type', 'label', 'is_night_sleep', 'plan_start', 'plan_end', 'actual_start', 'actual_end', 'ml', 'awake_min', 'awake_count', 'night_feed_ml', 'pee', 'poo_small', 'poo_big', 'memo'];
     var lines = [cols.join(',')];
     Object.keys(state.days).filter(function (k) { return getDay(k); }).sort().forEach(function (k) {
       liveItems(state.days[k]).slice().sort(function (a, b) { return a.ps - b.ps; }).forEach(function (it) {
         var hasW = it.type === 'nap' || it.type === 'bed';
-        var row = [k, it.type, TYPES[it.type].label, hm(it.ps), hm(it.pe), it.as != null ? hm(it.as) : '', it.ae != null ? hm(it.ae) : '',
-          it.ml == null ? '' : it.ml, hasW ? wakeTotal(it) : '', hasW ? (it.w || []).length : '', it.type === 'bed' ? wakeMl(it) : '',
+        var isN = hasW ? (isNightSleep(it) ? 1 : 0) : '';
+        var row = [k, it.type, labelOf(it), isN, hm(it.ps), hm(it.pe), it.as != null ? hm(it.as) : '', it.ae != null ? hm(it.ae) : '',
+          it.ml == null ? '' : it.ml, hasW ? wakeTotal(it) : '', hasW ? (it.w || []).length : '', hasW ? wakeMl(it) : '',
           it.type === 'play' ? (it.pee ? 1 : 0) : '', it.type === 'play' ? (it.poo1 ? 1 : 0) : '', it.type === 'play' ? (it.poo2 ? 1 : 0) : '', it.memo || ''];
         lines.push(row.map(csvCell).join(','));
       });
