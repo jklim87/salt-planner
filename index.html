@@ -207,47 +207,32 @@
 <script>
 (function () {
   'use strict';
-  var KEY = 'saltday.v3';
-  var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v3';
+  var KEY = 'saltday.v4';
+  var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v4';
   var WAKE_FLOOR = 6 * 60 + 30;   // 6:30 이전 기상은 6:30으로 간주
-  var BED_LIMIT = 19 * 60;        // 입면이 19:00을 넘기면 줄이기 규칙 적용
-  var BED_MIN = 18 * 60 + 30;     // 입면이 18:30보다 이르면 낮잠을 늘려 보충
+  var BED_LIMIT = 19 * 60;        // 입면이 19:00을 넘기면 줄이기 규칙
+  var BED_MIN = 18 * 60 + 30;     // 입면이 18:30보다 이르면 늘리기 규칙
+  var FEED_MIN = 150, FEED_MAX = 210;   // 수유 텀은 불가피할 때만 2시간 30분 ~ 3시간 30분 안에서 조정
 
-  // 기본 루틴 (기상 시각으로부터의 경과 분). 기상이 늦으면 전체가 그만큼 뒤로 밀린다.
-  var TEMPLATE = [
-    { type: 'wake', s: 0,   e: 15  },  // 06:30 기상 후 수유
-    { type: 'play', s: 15,  e: 85  },  // 놀이 (깨시 85)
-    { type: 'nap',  s: 85,  e: 190 },  // 07:55~09:40 낮잠 105분
-    { type: 'feed', s: 195, e: 210 },  // 09:45 수유
-    { type: 'play', s: 210, e: 275 },  // 놀이 (깨시 85)
-    { type: 'nap',  s: 275, e: 360 },  // 11:05~12:30 낮잠 85분
-    { type: 'feed', s: 365, e: 380 },  // 12:35 수유
-    { type: 'play', s: 380, e: 445 },  // 놀이 (깨시 85)
-    { type: 'nap',  s: 445, e: 510 },  // 13:55~15:00 낮잠 65분
-    { type: 'feed', s: 520, e: 535 },  // 15:10 수유
-    { type: 'play', s: 535, e: 595 },  // 놀이 (깨시 85)
-    { type: 'nap',  s: 595, e: 640 },  // 16:25~17:10 낮잠 45분
-    { type: 'play', s: 640, e: 680 },  // 놀이 (깨시 90의 앞부분)
-    { type: 'bath', s: 680, e: 700 },  // 17:50 목욕
-    { type: 'bed',  s: 700, e: 730 }   // 18:10 수유 후 18:40 입면
-  ];
-  // 입면이 19:00을 넘길 때 줄이는 순서와 하한 (앞의 규칙을 먼저 다 쓰고 다음으로)
-  var RULES = [
-    { idx: 12, min: 35 },   // 마지막 깨시 90 → 85 (놀이 40 → 35)
-    { idx: 2,  min: 90 },   // 낮잠① 105 → 90
-    { idx: 8,  min: 60 },   // 낮잠③ 65 → 60
-    { idx: 11, min: 40 }    // 낮잠④ 45 → 40
-  ];
-  // 입면이 18:30보다 이를 때 늘리는 순서와 상한
-  var EXTEND = [
-    { idx: 5,  max: 100 },  // 낮잠② 85 → 100
-    { idx: 8,  max: 70 },   // 낮잠③ 65 → 70
-    { idx: 11, max: 50 }    // 낮잠④ 45 → 50
-  ];
+  // 기본 루틴 (기상 시각으로부터의 경과 분)
+  var BASE = {
+    ww:   [85, 85, 85, 85],        // 직전 잠 종료 → 낮잠 시작 (깨시)
+    nap:  [105, 85, 65, 45],       // 낮잠 길이
+    gap:  [5, 5, 10],              // 낮잠 종료 → 수유 (낮잠①②③ 뒤)
+    feed: [0, 195, 365, 520, 700], // 수유 시각: 기상 후 수유, 수유②③④, 수유 후 입면. 기상 시각 기준으로 고정
+    lastGap: 60                    // 낮잠④ 종료 → 수유 후 입면 (놀이 40 + 목욕 20)
+  };
+  var FEED_LEN = 15, BATH_LEN = 20, BED_LEN = 30;
+  var BATH_GAP = 10;              // 목욕 끝 → 수유 후 입면 사이 짧은 놀이 (허용 범위 10~15분, 기본 10)
+  // 입면 19:00 초과 시 줄이는 순서 (앞 규칙을 하한까지 먼저)
+  var SHRINK = [ { k: 'lastGap', min: 55 }, { k: 'nap', i: 0, min: 90 }, { k: 'nap', i: 2, min: 60 }, { k: 'nap', i: 3, min: 40 } ];
+  // 입면 18:30 미만 시 늘리는 순서
+  var GROW = [ { k: 'nap', i: 1, max: 100 }, { k: 'nap', i: 2, max: 70 }, { k: 'nap', i: 3, max: 50 } ];
   var LABEL = { wake: '기상 후 수유', play: '놀이', nap: '낮잠', feed: '수유', bath: '목욕', bed: '수유 후 입면' };
+  var NAP_KEYS = ['nap1', 'nap2', 'nap3', 'nap4'];
 
   var state = load();
-  var ui = { open: null, draft: null };   // draft: 편집 중인 낮잠의 임시 시각 {as, ae}
+  var ui = { open: null, draft: null };
   var pendingConfirm = null;
 
   function now() { return Date.now(); }
@@ -259,7 +244,6 @@
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
     if (push !== false) syncPush();
   }
-  function touch(it) { it.u = now(); }
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function hm(min) { if (min == null || isNaN(min)) return ''; min = ((min % 1440) + 1440) % 1440; return pad(Math.floor(min / 60)) + ':' + pad(min % 60); }
@@ -269,71 +253,93 @@
   function fmtDate(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); return +p[1] + '월 ' + +p[2] + '일 (' + '일월화수목금토'[d.getDay()] + ')'; }
   // 태어난 날을 1일로 세는 한국식 (2026-09-09 = 100일)
   function ageDays() { var b = new Date(2026, 5, 2); var p = todayKey().split('-'); var t = new Date(+p[0], +p[1] - 1, +p[2]); return Math.round((t - b) / 86400000) + 1; }
-  function uid(i) { return 'i' + i + '_' + now().toString(36); }
   function sid() { return now().toString(36) + Math.random().toString(36).slice(2, 6); }
+  function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
 
   function getDay(k) { var d = state.days[k]; return (d && !d.del) ? d : null; }
 
-  // ai번째 항목이 at에 시작한다고 보고 그 뒤 일정을 다시 배치한다. 입면이 19:00을 넘기면 RULES 순서로 줄인다.
-  function reschedule(items, ai, at) {
-    var d = TEMPLATE.map(function (t) { return t.e - t.s; });
-    var gap = TEMPLATE.map(function (t, j) { return j + 1 < TEMPLATE.length ? TEMPLATE[j + 1].s - t.e : 0; });
-    function build() { var t = at, out = []; for (var j = ai; j < TEMPLATE.length; j++) { out.push([t, t + d[j]]); t += d[j] + gap[j]; } return out; }
-    var times = build();
-    var bedEnd = times[times.length - 1][1];
-    if (bedEnd > BED_LIMIT) {
-      var excess = bedEnd - BED_LIMIT;
-      RULES.forEach(function (r) {
-        if (excess <= 0 || r.idx < ai) return;   // 이미 지난 항목은 줄일 수 없다
-        var cut = Math.min(d[r.idx] - r.min, excess);
-        if (cut > 0) { d[r.idx] -= cut; excess -= cut; }
-      });
-      times = build();
-    } else if (bedEnd < BED_MIN) {
-      var deficit = BED_MIN - bedEnd;
-      EXTEND.forEach(function (r) {
-        if (deficit <= 0 || r.idx < ai) return;  // 이미 지난 낮잠은 늘릴 수 없다
-        var add = Math.min(r.max - d[r.idx], deficit);
-        if (add > 0) { d[r.idx] += add; deficit -= add; }
-      });
-      times = build();
+  // ---- 일정 생성 ----
+  // 낮잠은 깨시를 지키고, 수유는 기상 기준 고정 시각을 지킨다. 둘이 어긋나면 사이를 놀이로 메우고,
+  // 수유를 옮겨야만 하면 이전 수유로부터 2시간 30분~3시간 30분 안에서만 옮긴다.
+  function runPlan(day, P) {
+    var start = day.start, naps = day.naps || {};
+    var items = [], napEnd = [], feedAt = [start];
+    items.push({ id: 'wake', type: 'wake', ps: start, pe: start + FEED_LEN, as: start });
+    var prevSleepEnd = start, prevFeedEnd = start + FEED_LEN;
+    for (var j = 0; j < 4; j++) {
+      var a = naps[NAP_KEYS[j]] || {};
+      var ns = a.as != null ? a.as : Math.max(prevSleepEnd + P.ww[j], prevFeedEnd);
+      var ne = a.ae != null ? a.ae : ns + P.nap[j];
+      if (ns > prevFeedEnd) items.push({ id: 'pl' + j, type: 'play', ps: prevFeedEnd, pe: ns, beforeNap: j });
+      items.push({ id: NAP_KEYS[j], type: 'nap', ps: ns, pe: ne, as: a.as, ae: a.ae, planLen: P.nap[j] });
+      napEnd.push(ne); prevSleepEnd = ne;
+      if (j < 3) {
+        var prevFeed = feedAt[feedAt.length - 1];
+        var target = start + P.feed[j + 1];
+        var lo = Math.max(ne + P.gap[j], prevFeed + FEED_MIN), hi = prevFeed + FEED_MAX;
+        var f = lo > hi ? lo : clamp(Math.max(target, ne + P.gap[j]), lo, hi);
+        if (f - ne > P.gap[j]) items.push({ id: 'gap' + j, type: 'play', ps: ne, pe: f });   // 낮잠이 일찍 끝나 수유까지 남는 시간
+        items.push({ id: 'feed' + (j + 1), type: 'feed', ps: f, pe: f + FEED_LEN });
+        feedAt.push(f); prevFeedEnd = f + FEED_LEN;
+      }
     }
-    for (var j = ai; j < TEMPLATE.length; j++) {
-      var it = items[j];
-      if (it.ps !== times[j - ai][0] || it.pe !== times[j - ai][1]) { it.ps = times[j - ai][0]; it.pe = times[j - ai][1]; touch(it); }
+    // 수유 후 입면은 낮잠④ 종료 + 마지막 깨시를 그대로 따라간다 (제때면 기상 기준 고정 시각과 같다).
+    // 낮잠이 일찍 끝나면 입면도 당겨진다(늘리기 규칙으로 먼저 보충한 뒤). 단 직전 수유로부터 2시간 30분은 지켜야 한다.
+    var pf = feedAt[feedAt.length - 1];
+    var natural4 = napEnd[3] + P.lastGap;
+    var f4 = Math.max(natural4, pf + FEED_MIN);
+    var bathEnd = f4 - BATH_GAP, bath = bathEnd - BATH_LEN;
+    if (bath > napEnd[3]) items.push({ id: 'pl4', type: 'play', ps: napEnd[3], pe: bath });
+    items.push({ id: 'bath', type: 'bath', ps: bath, pe: bathEnd });
+    items.push({ id: 'pb', type: 'play', ps: bathEnd, pe: f4 });
+    items.push({ id: 'bed', type: 'bed', ps: f4, pe: f4 + BED_LEN });
+    return { items: items, bedEnd: f4 + BED_LEN, natural4: natural4 + BED_LEN, feedAt: feedAt.concat([f4]) };
+  }
+  function buildDay(day) {
+    var P = { ww: BASE.ww.slice(), nap: BASE.nap.slice(), gap: BASE.gap, feed: BASE.feed, lastGap: BASE.lastGap };
+    var naps = day.naps || {};
+    // 실제 기록이 있는 마지막 낮잠보다 앞은 이미 지난 것이라 길이를 바꾸지 않는다. 끝난 낮잠도 바꾸지 않는다
+    var lastRec = -1;
+    NAP_KEYS.forEach(function (k, i) { var a = naps[k]; if (a && (a.as != null || a.ae != null)) lastRec = i; });
+    function adjustable(i) { var a = naps[NAP_KEYS[i]]; return i >= lastRec && !(a && a.ae != null); }
+    var r = runPlan(day, P);
+    if (r.bedEnd > BED_LIMIT) {
+      for (var s = 0; s < SHRINK.length && r.bedEnd > BED_LIMIT; s++) {
+        var rule = SHRINK[s];
+        if (rule.k === 'nap' && !adjustable(rule.i)) continue;
+        while (r.bedEnd > BED_LIMIT && (rule.k === 'nap' ? P.nap[rule.i] : P.lastGap) > rule.min) {
+          if (rule.k === 'nap') P.nap[rule.i]--; else P.lastGap--;
+          r = runPlan(day, P);
+        }
+      }
+    } else if (r.natural4 < BED_MIN) {
+      // 낮잠이 짧아 입면이 18:30보다 당겨질 상황: 뒤 낮잠을 늘려 보충하고, 그래도 모자라면 입면이 그만큼 당겨진다
+      for (var g = 0; g < GROW.length && r.natural4 < BED_MIN; g++) {
+        if (!adjustable(GROW[g].i)) continue;
+        while (r.natural4 < BED_MIN && P.nap[GROW[g].i] < GROW[g].max) { P.nap[GROW[g].i]++; r = runPlan(day, P); }
+      }
     }
+    day.items = r.items;
+    return r;
   }
 
   function startDay(startMin) {
     syncPull(function () {
       if (getDay(todayKey())) { render(); toast('다른 기기에서 이미 오늘을 시작했어요'); return; }
       var s = Math.max(startMin, WAKE_FLOOR);
-      var items = TEMPLATE.map(function (t, i) { return { id: uid(i), type: t.type, ps: 0, pe: 0, as: null, ae: null, u: now() }; });
-      reschedule(items, 0, s);
-      items[0].as = s;
-      // sid는 "이번 시작"의 식별자. 초기화 후 다시 시작하면 sid가 바뀌어 이전 항목은 합쳐지지 않고 통째로 버려진다
-      state.days[todayKey()] = { date: todayKey(), start: s, su: now(), sid: sid(), items: items };
+      var day = { date: todayKey(), start: s, su: now(), sid: sid(), naps: {}, items: [] };
+      var r = buildDay(day);
+      state.days[todayKey()] = day;
       save(); ui.open = null; render();
-      toast('입면 ' + hm(items[items.length - 1].pe) + ' 예정');
+      toast('입면 ' + hm(r.bedEnd) + ' 예정');
     });
   }
-
-  // 실제 시작이 기록된 마지막 항목을 기준으로 뒤 일정을 다시 맞춘다
   function recalc() {
     var day = getDay(todayKey());
     if (!day) { toast('먼저 오늘을 시작해주세요'); return; }
-    var ai = -1, at = null, what = '';
-    day.items.forEach(function (it, i) {
-      if (it.as != null) { ai = i; at = it.as; what = LABEL[it.type] + ' 시작 ' + hm(it.as); }
-      if (it.type === 'nap' && it.ae != null && i + 1 < TEMPLATE.length) {
-        ai = i + 1; at = it.ae + (TEMPLATE[i + 1].s - TEMPLATE[i].e); what = '낮잠 종료 ' + hm(it.ae);
-      }
-    });
-    if (ai < 0) { toast('기록된 시각이 없어요'); return; }
-    if (ai >= TEMPLATE.length) { toast('뒤에 남은 일정이 없어요'); return; }
-    reschedule(day.items, ai, at);
+    var r = buildDay(day);
     save(); render();
-    toast(what + ' 기준 · 입면 ' + hm(day.items[day.items.length - 1].pe));
+    toast('입면 ' + hm(r.bedEnd) + ' 예정');
   }
 
   // ---- 렌더 ----
@@ -341,6 +347,7 @@
   function render() {
     document.getElementById('hdrDate').textContent = fmtDate(todayKey()) + ' · 생후 ' + ageDays() + '일';
     var day = getDay(todayKey());
+    if (day && (!day.items || !day.items.length)) buildDay(day);
     $view.innerHTML = day ? renderDay(day) : renderStart();
   }
   function renderStart() {
@@ -348,39 +355,27 @@
       '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_FLOOR) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button></div>' +
       '<div class="startbox"><button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
   }
-  function startOf(it) { return it.as != null ? it.as : it.ps; }
-  function endOf(it) { return it.ae != null ? it.ae : it.pe; }
-  // 깨시: 직전 잠(기상 또는 낮잠)이 끝난 시각부터 이 낮잠이 시작할 때까지. 기록된 실제 시각이 있으면 그걸 쓴다
-  function wakeWindow(items, napIdx) {
-    var from = null;
-    for (var i = napIdx - 1; i >= 0; i--) {
-      var p = items[i];
-      if (p.type === 'nap') { from = endOf(p); break; }
-      if (p.type === 'wake') { from = startOf(p); break; }
-    }
-    return from == null ? null : startOf(items[napIdx]) - from;
-  }
   function renderDay(day) {
-    var n = nowMin(), h = '<div class="rows">';
-    day.items.forEach(function (it, i) {
-      var start = startOf(it), end = endOf(it);
-      var isNow = start <= n && n < end;
-      var past = end <= n && !isNow;
+    var n = nowMin(), h = '<div class="rows">', items = day.items;
+    items.forEach(function (it, i) {
+      var isNow = it.ps <= n && n < it.pe;
+      var past = it.pe <= n && !isNow;
       var extra = '';
-      if (it.type === 'nap') extra = '<span class="sub">' + ((it.as != null && it.ae != null) ? '실제 ' + (it.ae - it.as) : (it.pe - it.ps)) + '분</span>';
-      if (it.type === 'play' && day.items[i + 1] && day.items[i + 1].type === 'nap') {
-        var ww = wakeWindow(day.items, i + 1);
-        if (ww != null) extra = '<span class="sub">깨시 ' + ww + '분</span>';
+      if (it.type === 'nap') extra = '<span class="sub">' + ((it.as != null && it.ae != null) ? '실제 ' : '') + (it.pe - it.ps) + '분</span>';
+      if (it.type === 'play' && it.beforeNap != null) {
+        // 깨시: 직전 잠(기상 또는 낮잠) 종료부터 다음 낮잠 시작까지
+        var from = null;
+        for (var k = i - 1; k >= 0; k--) { if (items[k].type === 'nap' || items[k].type === 'wake') { from = items[k].type === 'wake' ? items[k].ps : items[k].pe; break; } }
+        var napIt = null; for (var m = i + 1; m < items.length; m++) if (items[m].type === 'nap') { napIt = items[m]; break; }
+        if (from != null && napIt) extra = '<span class="sub">깨시 ' + (napIt.ps - from) + '분</span>';
       }
       if (it.type === 'bed') {
-        // 마지막 낮잠이 끝난 시각부터 수유 후 입면이 끝나는(입면) 시각까지
-        var lastNap = null;
-        for (var k = i - 1; k >= 0; k--) if (day.items[k].type === 'nap') { lastNap = day.items[k]; break; }
-        if (lastNap) extra = '<span class="sub">깨시 ' + (endOf(it) - endOf(lastNap)) + '분</span>';
+        var lastNap = null; for (var q = i - 1; q >= 0; q--) if (items[q].type === 'nap') { lastNap = items[q]; break; }
+        if (lastNap) extra = '<span class="sub">깨시 ' + (it.pe - lastNap.pe) + '분</span>';
       }
       var tappable = it.type === 'nap';
-      var hasActual = it.as != null || it.ae != null;
-      var inner = '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(start) + '</b>' + hm(end) + '</div>' +
+      var hasActual = it.type === 'nap' && (it.as != null || it.ae != null);
+      var inner = '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(it.ps) + '</b>' + hm(it.pe) + '</div>' +
         '<div class="title"><span class="chip ' + it.type + '">' + LABEL[it.type] + '</span>' + extra + '</div>';
       h += '<div class="row' + (isNow ? ' now' : '') + (past ? ' past' : '') + '">' +
         (tappable ? '<button class="head" data-act="toggle" data-id="' + it.id + '" aria-expanded="' + (ui.open === it.id) + '">' + inner +
@@ -398,7 +393,7 @@
       '<button class="btn secondary small" data-act="now" data-f="' + f + '">지금</button></div>';
   }
   function renderEditor(it) {
-    var d = ui.draft || { as: it.as != null ? it.as : it.ps, ae: it.ae != null ? it.ae : it.pe };
+    var d = ui.draft || { as: it.ps, ae: it.pe };
     return '<div class="editor" data-id="' + it.id + '">' +
       '<label>실제 시작</label>' + timeCtl('as', d.as) +
       '<label>실제 종료</label>' + timeCtl('ae', d.ae) +
@@ -428,30 +423,26 @@
   function syncPushNow() {
     fetch(endpoint(), { method: 'PUT', body: JSON.stringify(state) }).catch(function () {});
   }
-  // 항목별로 나중에 고친 쪽이 이긴다
+  // 세션(sid)이 다르면 더 최근 세션이 통째로 이기고, 같으면 낮잠 기록을 나중에 고친 쪽이 이긴다. 일정은 그로부터 다시 계산한다
   function mergeState(remote) {
     if (!remote || !remote.days) return false;
     var changed = false;
     Object.keys(remote.days).forEach(function (k) {
       var rd = remote.days[k], ld = state.days[k];
       if (!rd) return;
-      if (!ld) { rd.items = rd.items || []; state.days[k] = rd; changed = true; return; }
-      // 시작 세션이 다르면(초기화·재시작) 항목을 섞지 않고 더 최근 세션이 통째로 이긴다
+      if (!ld) { rd.naps = rd.naps || {}; rd.items = rd.items || []; state.days[k] = rd; changed = true; return; }
       if (rd.sid !== ld.sid) {
-        if ((rd.su || 0) > (ld.su || 0)) { rd.items = rd.items || []; state.days[k] = rd; changed = true; }
+        if ((rd.su || 0) > (ld.su || 0)) { rd.naps = rd.naps || {}; rd.items = rd.items || []; state.days[k] = rd; changed = true; }
         return;
       }
       if ((rd.su || 0) > (ld.su || 0)) { ld.start = rd.start; ld.del = rd.del; ld.su = rd.su; changed = true; }
-      var map = {};
-      (ld.items || []).forEach(function (it) { map[it.id] = it; });
-      (rd.items || []).forEach(function (it) {
-        var p = map[it.id];
-        if (!p) { map[it.id] = it; changed = true; }
-        else if ((it.u || 0) > (p.u || 0)) { map[it.id] = it; changed = true; }
+      var rn = rd.naps || {}; ld.naps = ld.naps || {};
+      var napChanged = false;
+      Object.keys(rn).forEach(function (key) {
+        var r = rn[key], l = ld.naps[key];
+        if (!l || (r.u || 0) > (l.u || 0)) { ld.naps[key] = r; napChanged = true; }
       });
-      // id가 'i{템플릿 순번}_...' 이므로 순번대로 정렬해 15개 순서를 고정한다
-      ld.items = Object.keys(map).map(function (id) { return map[id]; })
-        .sort(function (a, b) { return parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10); });
+      if (napChanged || changed) { if (!ld.del) buildDay(ld); changed = true; }
     });
     return changed;
   }
@@ -481,21 +472,22 @@
       var cur = parseHM(inp.value); if (cur == null) cur = nowMin();
       var nv = ((cur + parseInt(b.dataset.d, 10)) % 1440 + 1440) % 1440;
       inp.value = hm(nv);
-      if (!it || !ui.draft) return;
-      ui.draft[inp.dataset.f] = nv; return;
+      if (it && ui.draft) ui.draft[inp.dataset.f] = nv;
+      return;
     }
     if (act === 'toggle') {
       if (ui.open === id) { ui.open = null; ui.draft = null; }
-      else { ui.open = id; ui.draft = { as: it.as != null ? it.as : it.ps, ae: it.ae != null ? it.ae : it.pe }; }   // 기록이 없으면 계산된 계획 시각을 기본값으로
+      else { ui.open = id; ui.draft = { as: it.ps, ae: it.pe }; }   // 기록이 없으면 계산된 계획 시각이 기본값
       render(); return;
     }
     if (act === 'cancel') { ui.open = null; ui.draft = null; render(); return; }
     if (act === 'save' && it && ui.draft) {
-      var changed = it.as !== ui.draft.as || it.ae !== ui.draft.ae;
-      it.as = ui.draft.as; it.ae = ui.draft.ae;
+      var day = getDay(todayKey());
+      day.naps[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
       ui.open = null; ui.draft = null;
-      if (changed) { touch(it); save(); }
-      render(); return;
+      var r = buildDay(day); save(); render();
+      toast('입면 ' + hm(r.bedEnd) + ' 예정');
+      return;
     }
     if (act === 'now' && it && ui.draft) { ui.draft[b.dataset.f || 'as'] = nowMin(); render(); return; }
     if (act === 'recalc') { recalc(); return; }
@@ -503,9 +495,8 @@
       var today = getDay(todayKey());
       if (!today) { toast('오늘은 아직 시작하지 않았어요'); return; }
       askConfirm('오늘 일정을 지우고 처음부터 다시 시작할까요?', function () {
-        // 항목을 남기지 않고 날짜 자체를 새 sid의 빈 삭제 상태로 바꾼다. 다른 기기도 이 상태로 덮어써진다
-        state.days[todayKey()] = { date: todayKey(), del: true, su: now(), sid: sid(), items: [] };
-        ui.open = null; save(); render(); toast('오늘 일정을 지웠어요');
+        state.days[todayKey()] = { date: todayKey(), del: true, su: now(), sid: sid(), naps: {}, items: [] };
+        ui.open = null; ui.draft = null; save(); render(); toast('오늘 일정을 지웠어요');
       });
       return;
     }
