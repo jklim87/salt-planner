@@ -159,6 +159,39 @@
   .modal .box p { margin: 0 0 14px; font-size: 15px; }
   .modal .box .actions { display: flex; gap: 8px; justify-content: flex-end; }
   @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+  /* v5-add */
+  .flabel { display: block; font-size: 12.5px; color: var(--muted); letter-spacing: 0.04em; margin: 10px 0 4px; }
+  .textinput { width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface2); font-size: 16px; }
+  .hint { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); }
+  .empty { margin: 6px 0 12px; color: var(--muted); font-size: 14px; }
+  .cardhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+  .cardhead h2 { margin: 0; }
+  .plist { margin-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+  .pitem { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface2); border-radius: 12px; padding: 10px 12px; }
+  .pitem.static { margin-bottom: 8px; }
+  .pitem .pname { display: block; font-weight: 700; font-size: 15px; }
+  .pitem .psub { display: block; font-size: 12.5px; color: var(--muted); }
+  .pitem .pacts { display: flex; gap: 6px; flex: none; }
+  .btn.danger { color: var(--danger); }
+  .pecard { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); padding: 10px 12px 12px; }
+  .pecard .pehead { display: flex; align-items: center; gap: 8px; }
+  .pecard .pedur { flex: 1; font-size: 12.5px; color: var(--muted); }
+  .pecard label { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin: 8px 0 4px; }
+  .linkbtn { border: 0; background: transparent; padding: 4px 6px; font-size: 13px; }
+  .linkbtn.danger { color: var(--danger); }
+  .addbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .card .actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .editor .dur { font-size: 12.5px; color: var(--muted); margin-top: 8px; min-height: 1.2em; }
+  .toprow { display: flex; gap: 8px; margin-bottom: 12px; }
+  .toprow .btn { flex: 1; }
+  .check { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
+  .check input { width: 18px; height: 18px; }
+  .card .actions .grow { flex: 1; }
+  .card .actions { flex-wrap: wrap; align-items: center; }
+  .psub.center { text-align: center; font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); vertical-align: middle; }
+  .sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0 6px; }
+  /* /v5-add */
 </style>
 </head>
 <body>
@@ -187,10 +220,7 @@
     <button class="iconbtn" id="menuBtn" aria-label="메뉴">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
     </button>
-    <div class="menu" id="menu" hidden>
-      <button data-act="recalc">일정 재계산</button>
-      <button data-act="reset-today" class="danger">오늘 기록 초기화</button>
-    </div>
+    <div class="menu" id="menu" hidden></div>
   </header>
 
   <main id="view"></main>
@@ -207,51 +237,46 @@
 <script>
 (function () {
   'use strict';
-  var KEY = 'saltday.v4';
-  var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v4';
+  var KEY = 'saltday.v5';
+  var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v5';
   var WAKE_FLOOR = 6 * 60;        // 6:00 이전 기상은 밤잠 연장으로 보고 6:00을 하루 시작으로. 6:00 이후는 실제 기상 시각이 시작
   var WAKE_DEFAULT = 6 * 60 + 30; // 시작 화면 기본값
   var DAY_MAX = 12 * 60;          // 잠든 시각 상한: 기상 + 12:00
   var DAY_MIN = 11 * 60;          // 잠든 시각 하한: 기상 + 11:00
   var FEED_MIN = 150, FEED_MAX = 210;   // 수유 텀은 불가피할 때만 2시간 30분 ~ 3시간 30분 안에서 조정
-  var BED_FEED_MIN = 120;         // 취침이 당겨진 날 수유④를 당겨도 안 되면 입면 수유텀은 2:00까지 허용
+  var BED_FEED_MIN = 120;         // 취침이 당겨진 날 마지막 수유를 당겨도 안 되면 입면 수유텀은 2:00까지 허용
+  var NAP_FEED_GAP = 10;          // 낮잠이 늦게 끝나면 수유는 낮잠 종료 최소 10분 뒤
+  var MIN_PLAY = 10;              // 이보다 짧은 빈틈은 놀이 카드로 보이지 않는다
 
-  // 기본 루틴 (기상 시각으로부터의 경과 분)
-  var BASE = {
-    ww:   [90, 100, 105, 100],     // 직전 잠 종료 → 낮잠 시작 (깨시) 1:30 / 1:40 / 1:45 / 1:40
-    nap:  [50, 105, 30, 35],       // 낮잠 길이 (2026-09-15 확정: 08:00~08:50, 10:30~12:15, 14:00~14:30, 16:10~16:45)
-    gap:  [10, 0, 10],             // 낮잠 종료 → 수유 최소 간격 (낮잠①②③ 뒤)
-    feed: [0, 150, 345, 525, 690], // 수유 시각: 기상 후 수유(06:30), 수유②(09:00) ③(12:15) ④(15:15), 수유 후 입면(18:00). 기상 시각 기준으로 고정
-    lastGap: 75                    // 낮잠④ 종료(16:45) → 수유 후 입면 시작(18:00): 놀이 60 + 목욕 15. 마지막 깨시 = 75 + 입면 30 = 1:45
-  };
-  var FEED_LEN = 15, BATH_LEN = 15, BED_LEN = 30;
-  var BATH_GAP = 0;               // 목욕이 끝나면 바로 수유 후 입면 (2026-09-14 텀 두기 규칙 철회)
-  // 잠든 시각이 기상+12:00을 넘길 때 줄이는 순서: 마지막 놀이(깨시 1:45→1:30), 넷째 깨시(1:40→1:30). 그래도 넘으면 취침이 그만큼 늦어진다
-  var SHRINK = [ { k: 'lastGap', min: 60 }, { k: 'ww', i: 3, min: 90 } ];
-  // 잠든 시각이 기상+11:00에 못 미칠 때 늘리는 순서: 낮잠②(105→120, 아직 안 끝났을 때만), 마지막 놀이(깨시 1:45→2:00). 그래도 모자라면 이른 취침
-  var GROW = [ { k: 'nap', i: 1, max: 120 }, { k: 'lastGap', max: 90 } ];
-  var LABEL = { wake: '기상 후 수유', play: '놀이', nap: '낮잠', feed: '수유', bath: '목욕', bed: '수유 후 입면' };
-  var CIRC = ['①', '②', '③', '④', '⑤'];
-  // 낮잠과 수유에 몇 번째인지 번호를 붙인다 (수유는 기상 후 수유①부터 수유 후 입면⑤까지)
-  function labelOf(it) {
-    if (it.type === 'nap') return '낮잠 ' + CIRC[NAP_KEYS.indexOf(it.id)];
-    if (isFeedType(it.type)) return LABEL[it.type] + ' ' + CIRC[FEED_KEYS.indexOf(it.id)];
-    return LABEL[it.type];
-  }
-  var NAP_KEYS = ['nap1', 'nap2', 'nap3', 'nap4'];
-  var FEED_KEYS = ['wake', 'feed1', 'feed2', 'feed3', 'bed'];
-  // 하루 순서. 실제 기록이 있는 마지막 항목보다 앞은 "지난 것"으로 본다
-  var ORDER = ['wake', 'nap1', 'feed1', 'nap2', 'feed2', 'nap3', 'feed3', 'nap4', 'bed'];
-  function isFeedType(t) { return t === 'wake' || t === 'feed' || t === 'bed'; }
+  // 기본 루틴 (6:30 기상 기준 카드 목록). 프리셋도 같은 형식이다: t 종류, s 시작, e 종료 (분)
+  var M = function (h, m) { return h * 60 + m; };
+  var DEFAULT_ITEMS = [
+    { t: 'wake', s: M(6, 30), e: M(6, 30) },
+    { t: 'feed', s: M(6, 30), e: M(6, 45) },
+    { t: 'nap', s: M(8, 0), e: M(8, 50) },
+    { t: 'feed', s: M(9, 0), e: M(9, 15) },
+    { t: 'nap', s: M(10, 30), e: M(12, 15) },
+    { t: 'feed', s: M(12, 15), e: M(12, 30) },
+    { t: 'nap', s: M(14, 0), e: M(14, 30) },
+    { t: 'feed', s: M(15, 15), e: M(15, 30) },
+    { t: 'nap', s: M(16, 10), e: M(16, 45) },
+    { t: 'bath', s: M(17, 45), e: M(18, 0) },
+    { t: 'bed', s: M(18, 0), e: M(18, 30) }
+  ];
+  var LABEL = { wake: '기상', play: '놀이', nap: '낮잠', feed: '수유', bath: '목욕', bed: '수유 후 입면' };
+  var CIRC = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩'];
+  var TYPE_ORDER = { wake: 0, feed: 1, nap: 2, bath: 3, bed: 4 };
+  function circ(n) { return CIRC[n] || ('(' + (n + 1) + ')'); }
+  function isFeedType(t) { return t === 'feed' || t === 'bed'; }
 
   var state = load();
-  var ui = { open: null, draft: null };
+  var ui = { mode: null, open: null, draft: null, start: null, pe: null };
   var pendingConfirm = null;
 
   function now() { return Date.now(); }
   function load() {
-    try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && s.days) return s; } } catch (e) {}
-    return { days: {} };
+    try { var raw = localStorage.getItem(KEY); if (raw) { var s = JSON.parse(raw); if (s && s.days) { s.presets = s.presets || {}; s.def = s.def || null; return s; } } } catch (e) {}
+    return { days: {}, presets: {}, def: null };
   }
   function save(push) {
     try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
@@ -260,7 +285,17 @@
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function hm(min) { if (min == null || isNaN(min)) return ''; min = ((min % 1440) + 1440) % 1440; return pad(Math.floor(min / 60)) + ':' + pad(min % 60); }
-  function parseHM(s) { if (!s) return null; var p = s.split(':'); return parseInt(p[0], 10) * 60 + parseInt(p[1], 10); }
+  function parseHM(s) { if (!s) return null; var p = s.split(':'); var v = parseInt(p[0], 10) * 60 + parseInt(p[1], 10); return isNaN(v) ? null : v; }
+  function fmtTerm(min) { return Math.floor(min / 60) + ':' + pad(min % 60); }
+  // 길이 표기: 1시간 10분 / 1시간 / 30분
+  function fmtDur(min) {
+    if (min == null || isNaN(min)) return '';
+    if (min < 0) return '종료가 시작보다 앞';
+    var h = Math.floor(min / 60), m = min % 60;
+    if (h && m) return h + '시간 ' + m + '분';
+    if (h) return h + '시간';
+    return m + '분';
+  }
   function nowMin() { var d = new Date(); return d.getHours() * 60 + d.getMinutes(); }
   function todayKey() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function fmtDate(key) { var p = key.split('-'); var d = new Date(+p[0], +p[1] - 1, +p[2]); return +p[1] + '월 ' + +p[2] + '일 (' + '일월화수목금토'[d.getDay()] + ')'; }
@@ -268,64 +303,99 @@
   function ageDays() { var b = new Date(2026, 5, 2); var p = todayKey().split('-'); var t = new Date(+p[0], +p[1] - 1, +p[2]); return Math.round((t - b) / 86400000) + 1; }
   function sid() { return now().toString(36) + Math.random().toString(36).slice(2, 6); }
   function clamp(v, lo, hi) { return Math.min(Math.max(v, lo), hi); }
-  function fmtTerm(min) { return Math.floor(min / 60) + ':' + pad(min % 60); }   // 3:15 형식
-
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function getDay(k) { var d = state.days[k]; return (d && !d.del) ? d : null; }
+  function sortItems(items) { return items.slice().sort(function (a, b) { return (a.s - b.s) || (TYPE_ORDER[a.t] - TYPE_ORDER[b.t]); }); }
+
+  // ---- 루틴 템플릿: 카드 목록(프리셋)에서 규칙 엔진이 쓰는 값을 뽑는다 ----
+  // 낮잠: 직전 잠 종료로부터의 깨시(ww)와 길이. 수유: 기상으로부터의 시각(off)과 길이, 직전 낮잠 종료와의 최소 간격(gap).
+  // 목욕: 길이와 입면까지의 간격. 수유 후 입면: 마지막 낮잠 종료로부터의 간격(lastGap)과 길이.
+  function templateOf(items) {
+    var its = sortItems(items);
+    var wake = null; its.forEach(function (x) { if (x.t === 'wake' && !wake) wake = x; });
+    var w0 = wake ? wake.s : its[0].s;
+    var slots = [{ t: 'wake', id: 'wake' }], ni = 0, fi = 0, prevSleepEnd = w0, prevNapEnd = null, bath = null, bed = null, prevFeedS = null;
+    its.forEach(function (x) {
+      if (x.t === 'nap') { slots.push({ t: 'nap', id: 'nap' + ni, ww: Math.max(x.s - prevSleepEnd, 0), len: Math.max(x.e - x.s, 0) }); ni++; prevSleepEnd = x.e; prevNapEnd = x.e; }
+      else if (x.t === 'feed') {
+        // term: 프리셋에서 직전 수유와의 간격. 수유텀 하한 2:30·상한 3:30을 프리셋이 벗어나면 프리셋 값을 따른다
+        slots.push({ t: 'feed', id: 'feed' + fi, off: x.s - w0, len: Math.max(x.e - x.s, 0), gap: prevNapEnd != null ? clamp(x.s - prevNapEnd, 0, NAP_FEED_GAP) : 0, term: prevFeedS != null ? x.s - prevFeedS : null });
+        fi++; prevNapEnd = null; prevFeedS = x.s;
+      }
+      else if (x.t === 'bath') bath = x;
+      else if (x.t === 'bed') bed = x;
+    });
+    if (!bed) { var last = its[its.length - 1]; bed = { s: last.e + 60, e: last.e + 90 }; }
+    slots.push({ t: 'bed', id: 'bed', off: bed.s - w0, len: Math.max(bed.e - bed.s, 0), lastGap: Math.max(bed.s - prevSleepEnd, 0), term: prevFeedS != null ? bed.s - prevFeedS : null,
+      bath: bath ? { len: Math.max(bath.e - bath.s, 0), gap: Math.max(bed.s - bath.e, 0) } : null });
+    return slots;
+  }
+  // 기본 루틴: 사용자가 "기본 루틴으로 만들기"로 지정한 프리셋이 있으면 그것, 없으면 내장 루틴
+  function defaultPreset() { var d = state.def, p = d && d.id ? state.presets[d.id] : null; return (p && !p.del && p.items && p.items.length) ? p : null; }
+  function defaultItems() { var p = defaultPreset(); return p ? p.items : DEFAULT_ITEMS; }
+  function templateFor(day) { return templateOf(day.preset && day.preset.items && day.preset.items.length ? day.preset.items : DEFAULT_ITEMS); }
+  function baseParams(T) {
+    var P = { ww: [], nap: [], lastGap: 0, feedAt: {} };
+    T.forEach(function (sl) { if (sl.t === 'nap') { P.ww.push(sl.ww); P.nap.push(sl.len); } if (sl.t === 'bed') P.lastGap = sl.lastGap; });
+    return P;
+  }
+  function recOf(day, id) { return day.rec ? day.rec[id] : null; }
 
   // ---- 일정 생성 ----
   // 낮잠은 깨시를 지키고, 수유는 기상 기준 고정 시각을 지킨다. 둘이 어긋나면 사이를 놀이로 메우고,
   // 수유를 옮겨야만 하면 이전 수유로부터 2시간 30분~3시간 30분 안에서만 옮긴다.
-  function runPlan(day, P, frozen) {
-    // frozen: 지금 시각 이전에 이미 지난 항목을 직전 표시 시각으로 묶어둔 값. 실제 기록이 있으면 그쪽이 우선
+  function runPlan(day, T, P, frozen) {
     frozen = frozen || {};
-    var naps = {}, feeds = {};
-    NAP_KEYS.forEach(function (k) { naps[k] = merged(day.naps && day.naps[k], frozen[k]); });
-    FEED_KEYS.forEach(function (k) { feeds[k] = merged(day.feeds && day.feeds[k], frozen[k]); });
-    var w = feeds.wake || {};
-    var start = w.as != null ? w.as : day.start;
-    var wakeEnd = w.ae != null ? w.ae : start + FEED_LEN;
-    var items = [], napEnd = [], feedAt = [start];
-    items.push({ id: 'wake', type: 'wake', ps: start, pe: wakeEnd, as: w.as, ae: w.ae });
-    var prevSleepEnd = start, prevFeedEnd = wakeEnd;
-    for (var j = 0; j < 4; j++) {
-      var a = naps[NAP_KEYS[j]] || {};
-      var ns = a.as != null ? a.as : Math.max(prevSleepEnd + P.ww[j], prevFeedEnd);
-      // 계획 종료 = 깨우는 시각. 다음 수유가 직전 수유로부터 3시간 30분을 넘기지 않도록 그 시각에는 깨운다 (주로 낮잠②)
-      var wakeCap = feedAt[feedAt.length - 1] + FEED_MAX - (j < 3 ? P.gap[j] : 0);
-      var ne = a.ae != null ? a.ae : (wakeCap > ns ? Math.min(ns + P.nap[j], wakeCap) : ns + P.nap[j]);
-      if (ns > prevFeedEnd) items.push({ id: 'pl' + j, type: 'play', ps: prevFeedEnd, pe: ns, beforeNap: j });
-      items.push({ id: NAP_KEYS[j], type: 'nap', ps: ns, pe: ne, as: a.as, ae: a.ae, planLen: P.nap[j] });
-      napEnd.push(ne); prevSleepEnd = ne;
-      if (j < 3) {
-        var prevFeed = feedAt[feedAt.length - 1];
-        var fa = feeds['feed' + (j + 1)] || {};
-        var f;
+    var rec = {};
+    T.forEach(function (sl) { rec[sl.id] = merged(recOf(day, sl.id), frozen[sl.id]); });
+    var start = rec.wake.as != null ? rec.wake.as : day.start;
+    var items = [{ id: 'wake', type: 'wake', ps: start, pe: start }];
+    var cursor = start, prevSleepEnd = start, prevFeedStart = null, prevFeedEnd = start;
+    var napEnd = [], feedAt = [], feedMin = {}, ni = 0, pi = 0;
+    function play(to) { if (to - cursor > MIN_PLAY) items.push({ id: 'p' + (pi++), type: 'play', ps: cursor, pe: to }); }
+    for (var i = 0; i < T.length; i++) {
+      var sl = T[i];
+      if (sl.t === 'nap') {
+        var a = rec[sl.id];
+        var ns = a.as != null ? a.as : Math.max(prevSleepEnd + P.ww[ni], prevFeedEnd);
+        // 계획 종료 = 깨우는 시각. 다음 수유가 직전 수유로부터 3시간 30분을 넘기지 않도록 그 시각에는 깨운다 (주로 긴 낮잠)
+        var nxt = T[i + 1];
+        var cap = prevFeedStart != null ? prevFeedStart + FEED_MAX - (nxt && nxt.t === 'feed' ? nxt.gap : 0) : Infinity;
+        var ne = a.ae != null ? a.ae : (cap > ns ? Math.min(ns + P.nap[ni], cap) : ns + P.nap[ni]);
+        play(ns); items.push({ id: sl.id, type: 'nap', ps: ns, pe: ne });
+        cursor = Math.max(cursor, ne); napEnd.push(ne); prevSleepEnd = ne; ni++;
+      } else if (sl.t === 'feed') {
+        var fa = rec[sl.id], f;
+        var minS = cursor + (T[i - 1] && T[i - 1].t === 'nap' ? sl.gap : 0);
+        feedMin[sl.id] = minS;
         if (fa.as != null) f = fa.as;   // 실제 수유 시각이 기록되면 그대로. 뒤 수유는 여기서부터 2시간 30분~3시간 30분 안에 다시 맞춘다
-        else if (j === 2 && P.feed4At != null) f = P.feed4At;   // 취침이 당겨진 날 수유④를 당긴 값 (buildDay가 정함)
+        else if (P.feedAt[sl.id] != null) f = P.feedAt[sl.id];   // 취침이 당겨진 날 마지막 수유를 당긴 값 (buildDay가 정함)
         else {
-          var target = start + P.feed[j + 1];
-          var lo = Math.max(ne + P.gap[j], prevFeed + FEED_MIN), hi = prevFeed + FEED_MAX;
-          f = lo > hi ? lo : clamp(Math.max(target, ne + P.gap[j]), lo, hi);
+          var target = start + sl.off;
+          if (prevFeedStart == null) f = Math.max(target, minS);
+          else {
+            var tMin = sl.term != null ? Math.min(FEED_MIN, sl.term) : FEED_MIN, tMax = sl.term != null ? Math.max(FEED_MAX, sl.term) : FEED_MAX;
+            var lo = Math.max(minS, prevFeedStart + tMin), hi = prevFeedStart + tMax;
+            f = lo > hi ? lo : clamp(Math.max(target, minS), lo, hi);
+          }
         }
-        var fe = fa.ae != null ? fa.ae : f + FEED_LEN;
-        if (f - ne > P.gap[j]) items.push({ id: 'gap' + j, type: 'play', ps: ne, pe: f });   // 낮잠이 일찍 끝나 수유까지 남는 시간
-        items.push({ id: 'feed' + (j + 1), type: 'feed', ps: f, pe: fe, as: fa.as, ae: fa.ae });
-        feedAt.push(f); prevFeedEnd = fe;
+        var fe = fa.ae != null ? fa.ae : f + sl.len;
+        play(f); items.push({ id: sl.id, type: 'feed', ps: f, pe: fe });
+        cursor = Math.max(cursor, fe); feedAt.push(f); prevFeedStart = f; prevFeedEnd = fe;
+      } else if (sl.t === 'bed') {
+        // 수유 후 입면은 마지막 낮잠 종료 + 마지막 간격(놀이 + 목욕)을 그대로 따라간다. 낮잠이 짧으면 입면도 당겨진다.
+        // 마지막 수유와의 텀은 2시간 30분을 지향하되(수유를 당겨서 맞춤) 안 되면 2시간까지 허용
+        var ba = rec.bed, natural = prevSleepEnd + P.lastGap;
+        var bathTotal = sl.bath ? sl.bath.len + sl.bath.gap : 0;
+        var bMin = sl.term != null ? Math.min(BED_FEED_MIN, sl.term) : BED_FEED_MIN;
+        var f4 = ba.as != null ? ba.as : Math.max(natural, prevFeedStart != null ? prevFeedStart + bMin : 0, cursor + bathTotal);
+        var bedEnd = ba.ae != null ? ba.ae : f4 + sl.len;
+        if (sl.bath) { var bs = f4 - bathTotal, be = bs + sl.bath.len; if (bs >= cursor) { play(bs); items.push({ id: 'bath', type: 'bath', ps: bs, pe: be }); cursor = be; } }
+        play(f4); items.push({ id: 'bed', type: 'bed', ps: f4, pe: bedEnd }); feedAt.push(f4);
+        return { items: items, start: start, bedEnd: bedEnd, natural: natural + sl.len, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin, bedTerm: sl.term };
       }
     }
-    // 수유 후 입면은 낮잠④ 종료 + 마지막 간격(놀이 60 + 목욕 15)을 그대로 따라간다 (제때면 기상 + 11:30).
-    // 낮잠이 짧으면 입면도 당겨진다. 수유④와의 텀은 2시간 30분을 지향하되(수유④를 당겨서 맞춤) 안 되면 2시간까지 허용
-    var pf = feedAt[feedAt.length - 1];
-    var natural4 = napEnd[3] + P.lastGap;
-    var ba = feeds.bed || {};
-    var f4 = ba.as != null ? ba.as : Math.max(natural4, pf + BED_FEED_MIN);
-    var bedEnd = ba.ae != null ? ba.ae : f4 + BED_LEN;
-    var bathEnd = f4 - BATH_GAP, bath = bathEnd - BATH_LEN;
-    if (bath > napEnd[3]) items.push({ id: 'pl4', type: 'play', ps: napEnd[3], pe: bath });
-    items.push({ id: 'bath', type: 'bath', ps: bath, pe: bathEnd });
-    if (f4 > bathEnd) items.push({ id: 'pb', type: 'play', ps: bathEnd, pe: f4 });
-    items.push({ id: 'bed', type: 'bed', ps: f4, pe: bedEnd, as: ba.as, ae: ba.ae });
-    return { items: items, start: start, bedEnd: bedEnd, natural4: natural4 + BED_LEN, napEnd: napEnd, feedAt: feedAt.concat([f4]) };
+    return { items: items, start: start, bedEnd: cursor, natural: cursor, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin };
   }
   function merged(actual, frz) {
     var a = actual || {}, f = frz || {};
@@ -342,73 +412,89 @@
     return out;
   }
   function buildDay(day) {
-    var P = { ww: BASE.ww.slice(), nap: BASE.nap.slice(), gap: BASE.gap, feed: BASE.feed, lastGap: BASE.lastGap };
+    day.rec = day.rec || {};
+    var T = templateFor(day), P = baseParams(T), B = baseParams(T);
+    var napIds = [], feedIds = [];
+    T.forEach(function (sl) { if (sl.t === 'nap') napIds.push(sl.id); if (sl.t === 'feed') feedIds.push(sl.id); });
     var frozen = freezePast(day);
-    // 낮잠 실제 기록이 지난 수유 시각을 덮으면(예: 낮잠②가 12:30까지 갔는데 수유③ 12:15가 묶여 있음) 그 수유의 고정을 풀어 낮잠 뒤로 보낸다
-    NAP_KEYS.forEach(function (k) {
-      var a = day.naps && day.naps[k]; if (!a || a.as == null) return;
+    // 낮잠 실제 기록이 지난 수유 시각을 덮으면(낮잠이 12:30까지 갔는데 수유 12:15가 묶여 있음) 그 수유의 고정을 풀어 낮잠 뒤로 보낸다
+    napIds.forEach(function (k) {
+      var a = day.rec[k]; if (!a || a.as == null) return;
       var ae = a.ae != null ? a.ae : nowMin();
-      FEED_KEYS.forEach(function (f) {
-        var z = frozen[f], rec = day.feeds && day.feeds[f];
-        if (z && z.as != null && z.as >= a.as && z.as < ae && !(rec && rec.as != null)) delete frozen[f];
+      feedIds.concat(['bed']).forEach(function (f) {
+        var z = frozen[f], r0 = day.rec[f];
+        if (z && z.as != null && z.as >= a.as && z.as < ae && !(r0 && r0.as != null)) delete frozen[f];
       });
     });
-    var naps = {}, feeds = {};
-    NAP_KEYS.forEach(function (k) { naps[k] = merged(day.naps && day.naps[k], frozen[k]); });
-    FEED_KEYS.forEach(function (k) { feeds[k] = merged(day.feeds && day.feeds[k], frozen[k]); });
+    var recs = {}, order = T.map(function (sl) { return sl.id; });
+    order.forEach(function (id) { recs[id] = merged(day.rec[id], frozen[id]); });
     // 실제 기록이나 지난 시각으로 묶인 마지막 항목보다 앞은 바꾸지 않는다. 끝난 낮잠도 바꾸지 않는다
     var lastRec = -1;
-    ORDER.forEach(function (k, pos) { var a = naps[k] || feeds[k]; if (a && (a.as != null || a.ae != null)) lastRec = pos; });
-    function adjustable(i) { var a = naps[NAP_KEYS[i]]; return ORDER.indexOf(NAP_KEYS[i]) >= lastRec && !(a && a.ae != null); }
-    var r = runPlan(day, P, frozen);
-    if (feeds.bed && (feeds.bed.as != null || feeds.bed.ae != null)) { day.items = r.items; return r; }   // 입면을 실제로 기록했으면 보정할 것이 없다
+    order.forEach(function (id, pos) { var a = recs[id]; if (a.as != null || a.ae != null) lastRec = pos; });
+    function adjustable(i) { var id = napIds[i]; return order.indexOf(id) >= lastRec && recs[id].ae == null; }
+    var r = runPlan(day, T, P, frozen);
+    if (recs.bed.as != null || recs.bed.ae != null) { day.items = r.items; return r; }   // 입면을 실제로 기록했으면 보정할 것이 없다
     var limit = r.start + DAY_MAX, floor = r.start + DAY_MIN;
+    var lastNap = napIds.length - 1, longest = -1;
+    B.nap.forEach(function (v, i) { if (longest < 0 || v > B.nap[longest]) longest = i; });
+    // 잠든 시각이 기상+12:00을 넘길 때 줄이는 순서: 마지막 놀이(−15분), 마지막 낮잠 앞 깨시(−10분). 그래도 넘으면 취침이 그만큼 늦어진다
+    var SHRINK = [{ k: 'lastGap', min: Math.max(B.lastGap - 15, 0) }];
+    if (lastNap >= 0) SHRINK.push({ k: 'ww', i: lastNap, min: Math.max(B.ww[lastNap] - 10, 0) });
+    // 잠든 시각이 기상+11:00에 못 미칠 때 늘리는 순서: 가장 긴 낮잠(+15분, 아직 안 끝났을 때만), 마지막 놀이(+15분). 그래도 모자라면 이른 취침
+    var GROW = [];
+    if (longest >= 0) GROW.push({ k: 'nap', i: longest, max: B.nap[longest] + 15 });
+    GROW.push({ k: 'lastGap', max: B.lastGap + 15 });
     function val(rule) { return rule.k === 'nap' ? P.nap[rule.i] : rule.k === 'ww' ? P.ww[rule.i] : P.lastGap; }
     function step(rule, d) { if (rule.k === 'nap') P.nap[rule.i] += d; else if (rule.k === 'ww') P.ww[rule.i] += d; else P.lastGap += d; }
     // 아직 손댈 수 있는 값인지: 낮잠 길이는 그 낮잠이 안 끝났을 때, 깨시는 그 낮잠이 아직 시작 안 했을 때
     function canTouch(rule) {
       if (rule.k === 'nap') return adjustable(rule.i);
-      if (rule.k === 'ww') { var a = naps[NAP_KEYS[rule.i]]; return adjustable(rule.i) && !(a && a.as != null); }
+      if (rule.k === 'ww') return adjustable(rule.i) && recs[napIds[rule.i]].as == null;
       return true;
     }
-    // 늘리기/줄이기와 수유④ 당기기는 서로 영향을 주므로(수유④가 당겨지면 낮잠④와 입면도 당겨질 수 있다) 변화가 없을 때까지 반복
-    var f3 = feeds.feed3 || {}, sig = '';
+    var lastFeed = feedIds.length ? feedIds[feedIds.length - 1] : null, sig = '';
+    // 늘리기/줄이기와 마지막 수유 당기기는 서로 영향을 주므로 변화가 없을 때까지 반복
     for (var iter = 0; iter < 4; iter++) {
-    if (r.bedEnd > limit) {
-      // 낮잠이 길어져 잠든 시각이 기상+12:00을 넘길 때. 순서대로 하한까지 줄이고, 그래도 넘으면 취침이 늦어진다
-      for (var s = 0; s < SHRINK.length && r.bedEnd > limit; s++) {
-        if (!canTouch(SHRINK[s])) continue;
-        while (r.bedEnd > limit && val(SHRINK[s]) > SHRINK[s].min) { step(SHRINK[s], -1); r = runPlan(day, P, frozen); }
+      if (r.bedEnd > limit) {
+        for (var s = 0; s < SHRINK.length && r.bedEnd > limit; s++) {
+          if (!canTouch(SHRINK[s])) continue;
+          while (r.bedEnd > limit && val(SHRINK[s]) > SHRINK[s].min) { step(SHRINK[s], -1); r = runPlan(day, T, P, frozen); }
+        }
+      } else if (r.natural < floor) {
+        for (var g = 0; g < GROW.length && r.natural < floor; g++) {
+          if (!canTouch(GROW[g])) continue;
+          while (r.natural < floor && val(GROW[g]) < GROW[g].max) { step(GROW[g], 1); r = runPlan(day, T, P, frozen); }
+        }
       }
-    } else if (r.natural4 < floor) {
-      // 낮잠이 짧아 잠든 시각이 기상+11:00에 못 미칠 때. 낮잠②(아직이면)와 마지막 놀이를 늘리고, 그래도 모자라면 이른 취침
-      for (var g = 0; g < GROW.length && r.natural4 < floor; g++) {
-        if (!canTouch(GROW[g])) continue;
-        while (r.natural4 < floor && val(GROW[g]) < GROW[g].max) { step(GROW[g], 1); r = runPlan(day, P, frozen); }
+      // 취침이 당겨져 마지막 수유→입면 텀이 2시간 30분에 못 미치면 마지막 수유를 당긴다 (직전 낮잠 종료+10분, 직전 수유+2:30, 지금 이후 안에서)
+      for (var t = 0; t < 3 && lastFeed && recs[lastFeed].as == null; t++) {
+        var kf = feedIds.length - 1, bedAt = r.feedAt[r.feedAt.length - 1], fAt = r.feedAt[kf];
+        var want = r.bedTerm != null ? Math.min(FEED_MIN, r.bedTerm) : FEED_MIN;   // 프리셋이 정한 입면 수유텀이 2:30보다 짧으면 그 값을 지향
+        if (bedAt - fAt >= want) break;
+        var nf = Math.max(bedAt - want, r.feedMin[lastFeed], kf > 0 ? r.feedAt[kf - 1] + FEED_MIN : -Infinity, nowMin());
+        if (nf >= fAt) break;
+        P.feedAt[lastFeed] = nf; r = runPlan(day, T, P, frozen);
       }
-    }
-    // 취침이 당겨져 수유④→입면 텀이 2시간 30분에 못 미치면 수유④를 당긴다 (낮잠③ 종료+10분, 수유③+2:30, 지금 이후 안에서)
-    for (var t = 0; t < 3 && f3.as == null; t++) {
-      var bedAt = r.feedAt[4], feed4 = r.feedAt[3];
-      if (bedAt - feed4 >= FEED_MIN) break;
-      var nf = Math.max(bedAt - FEED_MIN, r.napEnd[2] + P.gap[2], r.feedAt[2] + FEED_MIN, nowMin());
-      if (nf >= feed4) break;
-      P.feed4At = nf; r = runPlan(day, P, frozen);
-    }
-    var sig2 = JSON.stringify(P); if (sig2 === sig) break; sig = sig2;
+      var sig2 = JSON.stringify(P); if (sig2 === sig) break; sig = sig2;
     }
     day.items = r.items;
     return r;
   }
 
-  function startDay(startMin) {
+  // ---- 하루 시작 ----
+  function startDay(wakeMin, feedMin, preset) {
     syncPull(function () {
       if (getDay(todayKey())) { render(); toast('다른 기기에서 이미 오늘을 시작했어요'); return; }
-      var s = Math.max(startMin, WAKE_FLOOR);
-      var day = { date: todayKey(), start: s, su: now(), sid: sid(), naps: {}, feeds: {}, items: [] };
+      var s = Math.max(wakeMin, WAKE_FLOOR);
+      if (!preset) preset = defaultPreset();
+      var day = { date: todayKey(), start: s, su: now(), sid: sid(), rec: {}, items: [], preset: preset ? { id: preset.id, name: preset.name, items: preset.items } : null };
+      // 기상과 첫 수유를 따로 받는다. 첫 수유가 루틴 기본(기상 + 오프셋)과 다르면 실제 기록으로 넣는다
+      var T = templateFor(day), firstFeed = null;
+      T.forEach(function (sl) { if (sl.t === 'feed' && !firstFeed) firstFeed = sl; });
+      if (firstFeed && feedMin != null && feedMin !== s + firstFeed.off) day.rec[firstFeed.id] = { as: Math.max(feedMin, s), ae: null, u: now() };
       var r = buildDay(day);
       state.days[todayKey()] = day;
-      save(); ui.open = null; render();
+      save(); ui.open = null; ui.mode = null; ui.start = null; render();
       toast('입면 ' + hm(r.bedEnd) + ' 예정');
     });
   }
@@ -420,29 +506,166 @@
     toast('입면 ' + hm(r.bedEnd) + ' 예정');
   }
 
+  // ---- 프리셋 ----
+  function presetList() {
+    return Object.keys(state.presets || {}).map(function (k) { return state.presets[k]; })
+      .filter(function (p) { return p && !p.del && p.items && p.items.length; })
+      .sort(function (a, b) { return (a.c || 0) - (b.c || 0); });
+  }
+  function presetSummary(items) {
+    var T = templateOf(items), naps = 0, napMin = 0, w = null;
+    T.forEach(function (sl) { if (sl.t === 'nap') { naps++; napMin += sl.len; } });
+    sortItems(items).forEach(function (x) { if (x.t === 'wake' && w == null) w = x.s; });
+    if (w == null) w = sortItems(items)[0].s;
+    var r = runPlan({ start: w, rec: {} }, T, baseParams(T), {});
+    return '기상 ' + hm(w) + ' · 입면 ' + hm(r.bedEnd) + ' · 낮잠 ' + (naps ? fmtDur(napMin) : '없음') + ' (총 ' + naps + '회)';
+  }
+  function newKey() { return 'k' + Math.random().toString(36).slice(2, 8); }
+  function openPresetEditor(preset) {
+    var src = preset ? preset.items : defaultItems();
+    var dp = defaultPreset();
+    ui.pe = { id: preset ? preset.id : null, name: preset ? preset.name : '', c: preset ? preset.c : null, makeDefault: !!(preset && dp && dp.id === preset.id),
+      items: sortItems(src).map(function (x) { return { k: newKey(), t: x.t, s: x.s, e: x.e }; }) };
+    ui.mode = 'preset'; ui.open = null; ui.draft = null; render();
+  }
+  function savePreset() {
+    var pe = ui.pe; if (!pe) return;
+    var nameEl = document.getElementById('peName'); if (nameEl) pe.name = nameEl.value.trim();
+    if (!pe.name) { toast('프리셋 이름을 입력해주세요'); return; }
+    var its = sortItems(pe.items);
+    if (!its.length || its[0].t !== 'wake') { toast('기상 카드가 맨 앞이어야 해요'); return; }
+    if (its[its.length - 1].t !== 'bed') { toast('수유 후 입면 카드가 맨 뒤여야 해요'); return; }
+    for (var i = 0; i < its.length; i++) {
+      var x = its[i];
+      if (x.t !== 'wake' && x.e < x.s) { toast(labelOfPe(its, i) + ': 종료가 시작보다 앞이에요'); return; }
+      if (i > 0 && x.s < its[i - 1].e) { toast(labelOfPe(its, i - 1) + '와 ' + labelOfPe(its, i) + '가 겹쳐요'); return; }
+    }
+    var id = pe.id || sid();
+    state.presets[id] = { id: id, name: pe.name, c: pe.c != null ? pe.c : now(), u: now(),
+      items: its.map(function (x) { return { t: x.t, s: x.s, e: x.t === 'wake' ? x.s : x.e }; }) };
+    var wasDefault = state.def && state.def.id === id;
+    if (pe.makeDefault) state.def = { id: id, u: now() };
+    else if (wasDefault) state.def = { id: null, u: now() };
+    save(); ui.pe = null; ui.mode = 'plist'; render(); toast(pe.makeDefault ? '기본 루틴으로 저장했어요' : '프리셋을 저장했어요');
+  }
+  function deletePreset(id) {
+    var p = state.presets[id]; if (!p) return;
+    state.presets[id] = { id: id, del: true, u: now(), c: p.c };
+    if (state.def && state.def.id === id) state.def = { id: null, u: now() };
+    save(); render(); toast('프리셋을 지웠어요');
+  }
+  // 편집 중 카드 보조 표기: 소요시간, 수유에는 수유텀(직전 수유 시작부터), 낮잠에는 깨시(직전 잠 종료부터)
+  function peInfo(sorted, idx) {
+    var x = sorted[idx];
+    if (x.t === 'wake') return '';
+    var parts = [fmtDur(x.e - x.s)];
+    if (x.t === 'feed' || x.t === 'bed') {
+      for (var i = idx - 1; i >= 0; i--) if (sorted[i].t === 'feed') { parts.push('수유텀 ' + fmtTerm(x.s - sorted[i].s)); break; }
+    }
+    if (x.t === 'nap' || x.t === 'bed') {
+      for (var j = idx - 1; j >= 0; j--) if (sorted[j].t === 'nap' || sorted[j].t === 'wake') { parts.push('깨시 ' + fmtTerm((x.t === 'bed' ? x.e : x.s) - sorted[j].e)); break; }
+    }
+    return parts.join(' · ');
+  }
+  // 편집 중 카드 라벨: 같은 종류 중 몇 번째인지
+  function labelOfPe(sorted, idx) {
+    var x = sorted[idx];
+    if (x.t === 'nap' || x.t === 'feed') { var n = 0; for (var i = 0; i < idx; i++) if (sorted[i].t === x.t) n++; return LABEL[x.t] + ' ' + circ(n); }
+    if (x.t === 'bed') { var nf = 0; for (var j = 0; j < idx; j++) if (sorted[j].t === 'feed') nf++; return LABEL.bed + ' ' + circ(nf); }
+    return LABEL[x.t];
+  }
+
   // ---- 렌더 ----
   var $view = document.getElementById('view');
+  function renderMenu() {
+    var m = document.getElementById('menu');
+    if (ui.mode === 'preset' || ui.mode === 'plist') m.innerHTML = '<button data-act="pl-close">시간표로 돌아가기</button>';
+    else m.innerHTML = '<button data-act="preset-list">프리셋 만들기</button><button data-act="reset-today" class="danger">오늘 기록 초기화</button>';
+  }
   function render() {
     document.getElementById('hdrDate').textContent = fmtDate(todayKey()) + ' · 생후 ' + ageDays() + '일';
+    renderMenu();
+    if (ui.mode === 'preset' && ui.pe) { $view.innerHTML = renderPresetEditor(); return; }
+    if (ui.mode === 'plist') { $view.innerHTML = renderPresetList(); return; }
     var day = getDay(todayKey());
     if (day && (!day.items || !day.items.length)) buildDay(day);
     $view.innerHTML = day ? renderDay(day) : renderStart();
   }
+  function labelOf(items, i) {
+    var it = items[i];
+    if (it.type === 'nap' || it.type === 'feed') { var n = 0; for (var q = 0; q < i; q++) if (items[q].type === it.type) n++; return LABEL[it.type] + ' ' + circ(n); }
+    if (it.type === 'bed') { var nf = 0; for (var q2 = 0; q2 < i; q2++) if (items[q2].type === 'feed') nf++; return LABEL.bed + ' ' + circ(nf); }
+    return LABEL[it.type];
+  }
+  function timeCtl(f, val, opts) {
+    opts = opts || {};
+    return '<div class="timeinput"><button class="pm" data-act="' + (opts.act || 'tm') + '" data-f="' + f + '" data-d="-1"' + (opts.k ? ' data-k="' + opts.k + '"' : '') + ' aria-label="1분 빼기">−</button>' +
+      '<input type="time" data-f="' + f + '"' + (opts.k ? ' data-k="' + opts.k + '"' : '') + ' value="' + hm(val) + '">' +
+      '<button class="pm" data-act="' + (opts.act || 'tm') + '" data-f="' + f + '" data-d="1"' + (opts.k ? ' data-k="' + opts.k + '"' : '') + ' aria-label="1분 더하기">+</button>' +
+      (opts.now ? '<button class="btn secondary small" data-act="' + opts.now + '" data-f="' + f + '">지금</button>' : '') + '</div>';
+  }
   function renderStart() {
-    return '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
-      '<div class="startbox"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button><input type="time" id="startTime" value="' + hm(WAKE_DEFAULT) + '"><button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button></div>' +
-      '<div class="startbox"><button class="btn secondary" data-act="start-now">지금</button><button class="btn" data-act="start">시작</button></div></div>';
+    if (!ui.start) ui.start = { wake: WAKE_DEFAULT };
+    var st = ui.start, presets = presetList();
+    var h = '<div class="card"><h2>오늘 하루를 시작하기</h2>' +
+      '<label class="flabel">기상 시각</label>' + timeCtl('swake', st.wake, { act: 'stm', now: 'snow' }) +
+      '<div class="startbox"><button class="btn" data-act="start">기본 루틴으로 시작</button></div>';
+    if (presets.length) {
+      h += '<hr class="sep"><div class="plist"><div class="flabel">프리셋으로 시작</div>';
+      presets.forEach(function (p) {
+        var isDef0 = defaultPreset() && defaultPreset().id === p.id;
+        h += '<button class="pitem" data-act="start-preset" data-id="' + p.id + '"><span><span class="pname">' + esc(p.name) + (isDef0 ? ' <span class="badge">기본</span>' : '') + '</span><span class="psub">' + presetSummary(p.items) + '</span></span></button>';
+      });
+      h += '</div>';
+    }
+    return h + '</div>';
+  }
+  function renderPresetList() {
+    var presets = presetList();
+    var h = '<div class="toprow"><button class="btn secondary" data-act="pl-close">시간표로 돌아가기</button><button class="btn" data-act="preset-new">프리셋 만들기</button></div>' +
+      '<div class="card"><h2>프리셋 목록</h2>';
+    if (!presets.length) h += '<p class="empty">저장된 프리셋이 없어요.</p>';
+    presets.forEach(function (p) {
+      var isDef = defaultPreset() && defaultPreset().id === p.id;
+      h += '<div class="pitem static"><div><div class="pname">' + esc(p.name) + (isDef ? ' <span class="badge">기본</span>' : '') + '</div><div class="psub">' + presetSummary(p.items) + '</div></div>' +
+        '<div class="pacts"><button class="btn secondary small" data-act="pl-edit" data-id="' + p.id + '">수정</button><button class="btn secondary small danger" data-act="pl-del" data-id="' + p.id + '">삭제</button></div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+  function renderPresetEditor() {
+    var pe = ui.pe, sorted = sortItems(pe.items);
+    var h = '<div class="card"><div class="cardhead"><h2>' + (pe.id ? '프리셋 수정' : '프리셋 만들기') + '</h2></div>' +
+      '<label class="flabel">프리셋 이름</label><input class="textinput" id="peName" type="text" maxlength="30" placeholder="예: 평일 루틴" value="' + esc(pe.name) + '"></div>';
+    h += '<div class="rows">';
+    pe.items.forEach(function (x) {
+      var idx = sorted.indexOf(x), fixed = x.t === 'wake' || x.t === 'bed';
+      h += '<div class="pecard" data-k="' + x.k + '"><div class="pehead"><span class="chip ' + x.t + '">' + labelOfPe(sorted, idx) + '</span>' +
+        '<span class="pedur">' + peInfo(sorted, idx) + '</span>' +
+        (fixed ? '' : '<button class="linkbtn danger" data-act="pe-del" data-k="' + x.k + '">삭제</button>') + '</div>' +
+        '<label>' + (x.t === 'wake' ? '기상 시각' : '시작') + '</label>' + timeCtl('s', x.s, { act: 'ptm', k: x.k }) +
+        (x.t === 'wake' ? '' : '<label>종료</label>' + timeCtl('e', x.e, { act: 'ptm', k: x.k })) + '</div>';
+    });
+    h += '</div>';
+    var hasBath = pe.items.some(function (x) { return x.t === 'bath'; });
+    h += '<div class="card"><div class="flabel">카드 추가</div><div class="addbar">' +
+      '<button class="btn secondary small" data-act="pe-add" data-t="nap">+ 낮잠</button>' +
+      '<button class="btn secondary small" data-act="pe-add" data-t="feed">+ 수유</button>' +
+      (hasBath ? '' : '<button class="btn secondary small" data-act="pe-add" data-t="bath">+ 목욕</button>') + '</div>' +
+      '<div class="actions"><label class="check"><input type="checkbox" id="peDefault"' + (pe.makeDefault ? ' checked' : '') + '> 기본 루틴으로 만들기</label>' +
+      '<span class="grow"></span><button class="btn secondary" data-act="pe-cancel">취소</button><button class="btn" data-act="pe-save">저장</button></div></div>';
+    return h;
   }
   function renderDay(day) {
     var n = nowMin(), h = '<div class="rows">', items = day.items;
     items.forEach(function (it, i) {
       var isNow = it.ps <= n && n < it.pe;
       var past = it.pe <= n && !isNow;
-      var rec = (day.naps && day.naps[it.id]) || (day.feeds && day.feeds[it.id]);
+      var rec = day.rec && day.rec[it.id];
       var hasActual = !!(rec && (rec.as != null || rec.ae != null));
       var extra = '';
       if (it.type === 'nap') extra = '<span class="sub">수면 ' + fmtTerm(it.pe - it.ps) + '</span>';
-      if (isFeedType(it.type) && it.type !== 'wake') {
+      if (isFeedType(it.type)) {
         // 수유 텀: 직전 수유 시작부터 이 수유 시작까지
         var pf = null; for (var q2 = i - 1; q2 >= 0; q2--) if (isFeedType(items[q2].type)) { pf = items[q2]; break; }
         if (pf) extra = '<span class="sub">수유텀 ' + fmtTerm(it.ps - pf.ps) + '</span>';
@@ -450,16 +673,17 @@
       if (it.type !== 'nap' && items[i + 1] && items[i + 1].type === 'nap') {
         // 깨시: 직전 잠(기상 또는 낮잠) 종료부터 다음 낮잠 시작까지. 낮잠 바로 앞 카드(놀이 또는 수유)에 표시
         var from = null;
-        for (var k = i; k >= 0; k--) { if (items[k].type === 'nap' || items[k].type === 'wake') { from = items[k].type === 'wake' ? items[k].ps : items[k].pe; break; } }
+        for (var k = i; k >= 0; k--) { if (items[k].type === 'nap' || items[k].type === 'wake') { from = items[k].pe; break; } }
         if (from != null) extra += (extra ? ' ' : '') + '<span class="sub">깨시 ' + fmtTerm(items[i + 1].ps - from) + '</span>';
       }
       if (it.type === 'bed') {
-        var lastNap = null; for (var q = i - 1; q >= 0; q--) if (items[q].type === 'nap') { lastNap = items[q]; break; }
-        if (lastNap) extra += '<span class="sub">깨시 ' + fmtTerm(it.pe - lastNap.pe) + '</span>';
+        var lastSleep = null; for (var q = i - 1; q >= 0; q--) if (items[q].type === 'nap' || items[q].type === 'wake') { lastSleep = items[q]; break; }
+        if (lastSleep) extra += '<span class="sub">깨시 ' + fmtTerm(it.pe - lastSleep.pe) + '</span>';
       }
-      var tappable = it.type === 'nap' || isFeedType(it.type);
-      var inner = '<div class="time' + (hasActual ? ' actual' : '') + '"><b>' + hm(it.ps) + '</b>' + hm(it.pe) + '</div>' +
-        '<div class="title"><span class="chip ' + it.type + '">' + labelOf(it) + '</span>' + extra + '</div>';
+      var tappable = it.type === 'nap' || isFeedType(it.type) || it.type === 'wake';
+      var timeHtml = it.type === 'wake' ? '<b>' + hm(it.ps) + '</b>' : '<b>' + hm(it.ps) + '</b>' + hm(it.pe);
+      var inner = '<div class="time' + (hasActual ? ' actual' : '') + '">' + timeHtml + '</div>' +
+        '<div class="title"><span class="chip ' + it.type + '">' + labelOf(items, i) + '</span>' + extra + '</div>';
       h += '<div class="row' + (isNow ? ' now' : '') + (past ? ' past' : '') + '">' +
         (tappable ? '<button class="head" data-act="toggle" data-id="' + it.id + '" aria-expanded="' + (ui.open === it.id) + '">' + inner +
                       '<svg class="chev' + (ui.open === it.id ? ' open' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>'
@@ -469,18 +693,28 @@
     });
     return h + '</div>';
   }
-  function timeCtl(f, val) {
-    return '<div class="timeinput"><button class="pm" data-act="tm" data-d="-1" aria-label="1분 빼기">−</button>' +
-      '<input type="time" data-f="' + f + '" value="' + hm(val) + '">' +
-      '<button class="pm" data-act="tm" data-d="1" aria-label="1분 더하기">+</button>' +
-      '<button class="btn secondary small" data-act="now" data-f="' + f + '">지금</button></div>';
-  }
   function renderEditor(it) {
     var d = ui.draft || { as: it.ps, ae: it.pe };
+    if (it.type === 'wake') {
+      return '<div class="editor" data-id="' + it.id + '"><label>기상 시각</label>' + timeCtl('as', d.as, { now: 'now' }) +
+        '<div class="actions"><button class="btn secondary small" data-act="cancel">취소</button><button class="btn small" data-act="save">저장</button></div></div>';
+    }
     return '<div class="editor" data-id="' + it.id + '">' +
-      '<label>실제 시작</label>' + timeCtl('as', d.as) +
-      '<label>' + (it.type === 'bed' ? '입면 (잠든 시각)' : '실제 종료') + '</label>' + timeCtl('ae', d.ae) +
+      '<label>실제 시작</label>' + timeCtl('as', d.as, { now: 'now' }) +
+      '<label>' + (it.type === 'bed' ? '입면 (잠든 시각)' : '실제 종료') + '</label>' + timeCtl('ae', d.ae, { now: 'now' }) +
+      '<div class="dur">' + (d.as != null && d.ae != null ? '시작~종료 ' + fmtDur(d.ae - d.as) : '') + '</div>' +
       '<div class="actions"><button class="btn secondary small" data-act="cancel">취소</button><button class="btn small" data-act="save">저장</button></div></div>';
+  }
+  // 시작을 바꾸면 종료도 같은 길이만큼 따라간다 (그 뒤에 종료만 따로 고칠 수 있다)
+  function setDraft(f, v) {
+    var d = ui.draft; if (!d || v == null) return;
+    if (f === 'as' && d.as != null && d.ae != null) d.ae = d.ae + (v - d.as);
+    d[f] = v;
+  }
+  function setPeTime(k, f, v) {
+    var pe = ui.pe; if (!pe || v == null) return;
+    var x = null; pe.items.forEach(function (y) { if (y.k === k) x = y; }); if (!x) return;
+    if (f === 's') { x.e = x.t === 'wake' ? v : x.e + (v - x.s); x.s = v; } else x.e = v;
   }
 
   // ---- 공유 저장소 (Firebase Realtime Database REST). 링크를 연 모두가 같은 일정을 본다 ----
@@ -494,7 +728,7 @@
       .then(function (remote) {
         sync.pulling = false;
         if (mergeState(remote)) { save(false); render(); }
-        if ((!remote || !remote.days) && Object.keys(state.days).length) syncPushNow();
+        if ((!remote || (!remote.days && !remote.presets)) && (Object.keys(state.days).length || Object.keys(state.presets).length)) syncPushNow();
         cb && cb(true);
       })
       .catch(function () { sync.pulling = false; cb && cb(false); });
@@ -506,31 +740,32 @@
   function syncPushNow() {
     fetch(endpoint(), { method: 'PUT', body: JSON.stringify(state) }).catch(function () {});
   }
-  // 세션(sid)이 다르면 더 최근 세션이 통째로 이기고, 같으면 낮잠 기록을 나중에 고친 쪽이 이긴다. 일정은 그로부터 다시 계산한다
+  // 세션(sid)이 다르면 더 최근 세션이 통째로 이기고, 같으면 기록을 나중에 고친 쪽이 이긴다. 일정은 그로부터 다시 계산한다. 프리셋은 나중에 고친 쪽이 이긴다
   function mergeState(remote) {
-    if (!remote || !remote.days) return false;
+    if (!remote) return false;
     var changed = false;
-    Object.keys(remote.days).forEach(function (k) {
+    Object.keys(remote.days || {}).forEach(function (k) {
       var rd = remote.days[k], ld = state.days[k];
       if (!rd) return;
-      if (!ld) { rd.naps = rd.naps || {}; rd.feeds = rd.feeds || {}; rd.items = rd.items || []; state.days[k] = rd; changed = true; return; }
+      rd.rec = rd.rec || {}; rd.items = rd.items || [];
+      if (!ld) { state.days[k] = rd; changed = true; return; }
       if (rd.sid !== ld.sid) {
-        if ((rd.su || 0) > (ld.su || 0)) { rd.naps = rd.naps || {}; rd.feeds = rd.feeds || {}; rd.items = rd.items || []; state.days[k] = rd; changed = true; }
+        if ((rd.su || 0) > (ld.su || 0)) { state.days[k] = rd; changed = true; }
         return;
       }
-      if ((rd.su || 0) > (ld.su || 0)) { ld.start = rd.start; ld.del = rd.del; ld.su = rd.su; changed = true; }
-      var rn = rd.naps || {}; ld.naps = ld.naps || {};
-      var rf = rd.feeds || {}; ld.feeds = ld.feeds || {};
-      var napChanged = false;
-      Object.keys(rn).forEach(function (key) {
-        var r = rn[key], l = ld.naps[key];
-        if (!l || (r.u || 0) > (l.u || 0)) { ld.naps[key] = r; napChanged = true; }
+      var dayChanged = false;
+      if ((rd.su || 0) > (ld.su || 0)) { ld.start = rd.start; ld.del = rd.del; ld.su = rd.su; ld.preset = rd.preset; dayChanged = true; }
+      ld.rec = ld.rec || {};
+      Object.keys(rd.rec).forEach(function (key) {
+        var r = rd.rec[key], l = ld.rec[key];
+        if (!l || (r.u || 0) > (l.u || 0)) { ld.rec[key] = r; dayChanged = true; }
       });
-      Object.keys(rf).forEach(function (key) {
-        var r2 = rf[key], l2 = ld.feeds[key];
-        if (!l2 || (r2.u || 0) > (l2.u || 0)) { ld.feeds[key] = r2; napChanged = true; }
-      });
-      if (napChanged || changed) { if (!ld.del) buildDay(ld); changed = true; }
+      if (dayChanged) { if (!ld.del) buildDay(ld); changed = true; }
+    });
+    if (remote.def && (remote.def.u || 0) > ((state.def && state.def.u) || 0)) { state.def = remote.def; changed = true; }
+    Object.keys(remote.presets || {}).forEach(function (id) {
+      var rp = remote.presets[id], lp = state.presets[id];
+      if (rp && (!lp || (rp.u || 0) > (lp.u || 0))) { state.presets[id] = rp; changed = true; }
     });
     return changed;
   }
@@ -541,6 +776,7 @@
 
   // ---- 이벤트 ----
   function findItem(id) { var day = getDay(todayKey()); if (!day) return null; for (var i = 0; i < day.items.length; i++) if (day.items[i].id === id) return day.items[i]; return null; }
+  function bump(cur, d) { if (cur == null) cur = nowMin(); return ((cur + d) % 1440 + 1440) % 1440; }
 
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]');
@@ -551,54 +787,84 @@
     var editorEl = b.closest('.editor');
     var id = b.dataset.id || (editorEl && editorEl.dataset.id);
     var it = id ? findItem(id) : null;
+    var d = parseInt(b.dataset.d, 10);
     if (act === 'modal-ok') { var fn = pendingConfirm; closeConfirm(); if (fn) fn(); return; }
     if (act === 'modal-cancel') { closeConfirm(); return; }
-    if (act === 'start') { var v = parseHM(document.getElementById('startTime').value); if (v == null) { toast('시각을 입력해주세요'); return; } startDay(v); return; }
-    if (act === 'start-now') { document.getElementById('startTime').value = hm(nowMin()); return; }
-    if (act === 'tm') {
-      var inp = b.parentElement.querySelector('input[type="time"]'); if (!inp) return;
-      var cur = parseHM(inp.value); if (cur == null) cur = nowMin();
-      var nv = ((cur + parseInt(b.dataset.d, 10)) % 1440 + 1440) % 1440;
-      inp.value = hm(nv);
-      if (it && ui.draft) ui.draft[inp.dataset.f] = nv;
-      return;
+    // 시작 화면
+    if (act === 'start') { if (!ui.start) return; startDay(ui.start.wake, null, null); return; }
+    if (act === 'start-preset') { var p = state.presets[b.dataset.id]; if (!p || p.del) return; if (!ui.start) ui.start = { wake: WAKE_DEFAULT }; startDay(ui.start.wake, null, p); return; }
+    if (act === 'stm' || act === 'snow') {
+      if (!ui.start) return;
+      ui.start.wake = act === 'snow' ? nowMin() : bump(ui.start.wake, d);
+      render(); return;
     }
+    // 카드 편집
+    if (act === 'tm') { if (!it || !ui.draft) return; var f1 = b.dataset.f; setDraft(f1, bump(ui.draft[f1], d)); render(); return; }
+    if (act === 'now') { if (!it || !ui.draft) return; setDraft(b.dataset.f || 'as', nowMin()); render(); return; }
     if (act === 'toggle') {
       if (ui.open === id) { ui.open = null; ui.draft = null; }
-      else { ui.open = id; ui.draft = { as: it.ps, ae: it.pe }; }   // 기록이 없으면 계산된 계획 시각이 기본값
+      else { ui.open = id; ui.draft = { as: it.ps, ae: it.type === 'wake' ? null : it.pe }; }   // 기록이 없으면 계산된 계획 시각이 기본값
       render(); return;
     }
     if (act === 'cancel') { ui.open = null; ui.draft = null; render(); return; }
     if (act === 'save' && it && ui.draft) {
-      var day = getDay(todayKey());
-      if (it.type === 'nap') day.naps[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
-      else {
-        day.feeds = day.feeds || {};
-        day.feeds[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
-        if (it.id === 'wake' && ui.draft.as != null) { ui.draft.as = Math.max(ui.draft.as, WAKE_FLOOR); day.start = ui.draft.as; day.su = now(); }   // 기상 후 수유 시작 = 하루의 시작 (6:00 이전은 6:00)
-      }
+      var day = getDay(todayKey()); day.rec = day.rec || {};
+      if (it.type === 'wake') {
+        var ws = Math.max(ui.draft.as != null ? ui.draft.as : day.start, WAKE_FLOOR);
+        day.rec.wake = { as: ws, ae: null, u: now() }; day.start = ws; day.su = now();   // 기상 시각 = 하루의 시작 (6:00 이전은 6:00)
+      } else day.rec[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
       ui.open = null; ui.draft = null;
       var r = buildDay(day); save(); render();
       toast('입면 ' + hm(r.bedEnd) + ' 예정');
       return;
     }
-    if (act === 'now' && it && ui.draft) { ui.draft[b.dataset.f || 'as'] = nowMin(); render(); return; }
+    // 메뉴
     if (act === 'recalc') { recalc(); return; }
     if (act === 'reset-today') {
       var today = getDay(todayKey());
       if (!today) { toast('오늘은 아직 시작하지 않았어요'); return; }
       askConfirm('오늘 일정을 지우고 처음부터 다시 시작할까요?', function () {
-        state.days[todayKey()] = { date: todayKey(), del: true, su: now(), sid: sid(), naps: {}, feeds: {}, items: [] };
-        ui.open = null; ui.draft = null; save(); render(); toast('오늘 일정을 지웠어요');
+        state.days[todayKey()] = { date: todayKey(), del: true, su: now(), sid: sid(), rec: {}, items: [] };
+        ui.open = null; ui.draft = null; ui.mode = null; save(); render(); toast('오늘 일정을 지웠어요');
       });
       return;
     }
+    if (act === 'preset-new') { openPresetEditor(null); return; }
+    if (act === 'preset-list') { ui.mode = 'plist'; ui.open = null; render(); return; }
+    // 프리셋 목록
+    if (act === 'pl-close') { ui.mode = null; ui.pe = null; render(); return; }
+    if (act === 'pl-edit') { var pe0 = state.presets[b.dataset.id]; if (pe0 && !pe0.del) openPresetEditor(pe0); return; }
+    if (act === 'pl-del') { var pid = b.dataset.id, pp = state.presets[pid]; if (!pp) return; askConfirm('"' + pp.name + '" 프리셋을 지울까요?', function () { deletePreset(pid); }); return; }
+    // 프리셋 편집
+    if (act === 'ptm') {
+      if (!ui.pe) return; var k = b.dataset.k, f2 = b.dataset.f, x = null;
+      ui.pe.items.forEach(function (y) { if (y.k === k) x = y; }); if (!x) return;
+      var nameEl0 = document.getElementById('peName'); if (nameEl0) ui.pe.name = nameEl0.value;
+      setPeTime(k, f2, bump(x[f2], d)); render(); return;
+    }
+    if (act === 'pe-del') { if (!ui.pe) return; var nameEl1 = document.getElementById('peName'); if (nameEl1) ui.pe.name = nameEl1.value; ui.pe.items = ui.pe.items.filter(function (y) { return y.k !== b.dataset.k; }); render(); return; }
+    if (act === 'pe-add') {
+      if (!ui.pe) return; var nameEl2 = document.getElementById('peName'); if (nameEl2) ui.pe.name = nameEl2.value;
+      var t = b.dataset.t, sorted = sortItems(ui.pe.items), bed = null, lastEnd = null;
+      sorted.forEach(function (y) { if (y.t === 'bed') bed = y; else if (lastEnd == null || y.e > lastEnd) lastEnd = y.e; });
+      var len = t === 'nap' ? 30 : 15, s0 = lastEnd != null ? lastEnd : (bed ? bed.s - 60 : M(12, 0));
+      if (bed && s0 + len > bed.s) s0 = Math.max(bed.s - len, lastEnd != null ? lastEnd : 0);
+      ui.pe.items.push({ k: newKey(), t: t, s: s0, e: s0 + len });
+      render(); toast(LABEL[t] + ' 카드를 추가했어요. 시각을 조정해주세요'); return;
+    }
+    if (act === 'pe-save') { savePreset(); return; }
+    if (act === 'pe-cancel') { ui.pe = null; ui.mode = 'plist'; render(); return; }
   });
   document.getElementById('menuBtn').addEventListener('click', function () { var m = document.getElementById('menu'); m.hidden = !m.hidden; });
   document.addEventListener('change', function (e) {
-    var el = e.target; if (!el.dataset || (el.dataset.f !== 'as' && el.dataset.f !== 'ae')) return;
-    if (!el.closest('.editor') || !ui.draft) return;
-    ui.draft[el.dataset.f] = parseHM(el.value);
+    var el = e.target; if (!el.dataset) return;
+    if (el.id === 'peName' && ui.pe) { ui.pe.name = el.value; return; }
+    if (el.id === 'peDefault' && ui.pe) { ui.pe.makeDefault = !!el.checked; return; }
+    var f = el.dataset.f; if (!f) return;
+    var v = parseHM(el.value); if (v == null) return;
+    if (el.dataset.k && ui.pe) { setPeTime(el.dataset.k, f, v); render(); return; }
+    if (f === 'swake') { if (!ui.start) return; ui.start.wake = v; render(); return; }
+    if ((f === 'as' || f === 'ae') && el.closest('.editor') && ui.draft) { setDraft(f, v); render(); }
   });
 
   var toastTimer;
@@ -608,7 +874,7 @@
   syncPull();
   setInterval(function () { if (!document.hidden) syncPull(); }, 15000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) syncPull(); });
-  setInterval(function () { if (ui.open == null) render(); }, 60000);
+  setInterval(function () { if (ui.open == null && ui.mode == null) render(); }, 60000);
 })();
 </script>
 </body>
