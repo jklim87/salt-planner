@@ -243,8 +243,8 @@
   var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v5';
   var WAKE_FLOOR = 6 * 60;        // 6:00 이전 기상은 밤잠 연장으로 보고 6:00을 하루 시작으로. 6:00 이후는 실제 기상 시각이 시작
   var WAKE_DEFAULT = 6 * 60 + 30; // 시작 화면 기본값
-  var DAY_MAX = 12 * 60;          // 잠든 시각 상한: 기상 + 12:00
-  var DAY_MIN = 11 * 60;          // 잠든 시각 하한: 기상 + 11:00
+  // 잠든 시각의 상한은 그 날 루틴(프리셋)이 정한 잠든 시각(기본 루틴은 기상 + 12:00), 하한은 그보다 1시간 앞
+  var DAY_WINDOW = 60;
   var FEED_MIN = 150, FEED_MAX = 210;   // 수유 텀은 불가피할 때만 2시간 30분 ~ 3시간 30분 안에서 조정
   var BED_FEED_MIN = 120;         // 취침이 당겨진 날 마지막 수유를 당겨도 안 되면 입면 수유텀은 2:00까지 허용
   var NAP_FEED_GAP = 10;          // 낮잠이 늦게 끝나면 수유는 낮잠 종료 최소 10분 뒤
@@ -471,7 +471,8 @@
     function adjustable(i) { var id = napIds[i]; return order.indexOf(id) >= lastRec && recs[id].ae == null; }
     var r = runPlan(day, T, P, frozen);
     if (recs.bed.as != null || recs.bed.ae != null) { day.items = r.items; return r; }   // 입면을 실제로 기록했으면 보정할 것이 없다
-    var limit = r.start + DAY_MAX, floor = r.start + DAY_MIN;
+    var bedSl = T[T.length - 1];
+    var limit = r.start + bedSl.off + bedSl.len, floor = limit - DAY_WINDOW;   // 프리셋이 정한 잠든 시각을 그대로 상한으로 쓴다
     var lastNap = napIds.length - 1, longest = -1;
     B.nap.forEach(function (v, i) { if (longest < 0 || v > B.nap[longest]) longest = i; });
     // 잠든 시각이 기상+12:00을 넘길 때 줄이는 순서: 마지막 놀이(−15분), 마지막 낮잠 앞 깨시(−10분). 그래도 넘으면 취침이 그만큼 늦어진다
