@@ -355,10 +355,18 @@
     // 실제 기록된 낮잠 구간(뒤 순서 낮잠 포함). 놀이 빈틈이 기록된 낮잠과 겹치지 않게 한다
     var recNaps = [];
     T.forEach(function (sl, q) { if (sl.t !== 'nap') return; var ra = rec[sl.id]; if (ra.as == null) return; recNaps.push({ as: ra.as, e: ra.ae != null ? ra.ae : ra.as + sl.len }); });
+    recNaps.sort(function (a, b) { return a.as - b.as; });
+    // 놀이는 직전 카드 끝부터 다음 카드 시작까지인데, 그 사이에 기록된 낮잠(루틴 순서상 뒤 낮잠이라도)이 있으면 그 앞뒤로 쪼갠다
     function play(to) {
       var from = cursor;
-      recNaps.forEach(function (iv) { if (iv.as <= from && iv.e > from) from = iv.e; });
-      if (to - from > MIN_PLAY) items.push({ id: 'p' + (pi++), type: 'play', ps: from, pe: to });
+      function seg(a, b) { if (b - a > MIN_PLAY) items.push({ id: 'p' + (pi++), type: 'play', ps: a, pe: b }); }
+      for (var r = 0; r < recNaps.length && from < to; r++) {
+        var iv = recNaps[r];
+        if (iv.e <= from || iv.as >= to) continue;
+        if (iv.as > from) seg(from, iv.as);
+        from = Math.max(from, iv.e);
+      }
+      if (from < to) seg(from, to);
     }
     for (var i = 0; i < T.length; i++) {
       var sl = T[i];
