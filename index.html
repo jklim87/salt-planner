@@ -352,7 +352,14 @@
     var items = [{ id: 'wake', type: 'wake', ps: start, pe: start }];
     var cursor = start, prevSleepEnd = start, prevFeedStart = null, prevFeedEnd = start;
     var napEnd = [], feedAt = [], feedMin = {}, ni = 0, pi = 0;
-    function play(to) { if (to - cursor > MIN_PLAY) items.push({ id: 'p' + (pi++), type: 'play', ps: cursor, pe: to }); }
+    // 실제 기록된 낮잠 구간(뒤 순서 낮잠 포함). 놀이 빈틈이 기록된 낮잠과 겹치지 않게 한다
+    var recNaps = [];
+    T.forEach(function (sl, q) { if (sl.t !== 'nap') return; var ra = rec[sl.id]; if (ra.as == null) return; recNaps.push({ as: ra.as, e: ra.ae != null ? ra.ae : ra.as + sl.len }); });
+    function play(to) {
+      var from = cursor;
+      recNaps.forEach(function (iv) { if (iv.as <= from && iv.e > from) from = iv.e; });
+      if (to - from > MIN_PLAY) items.push({ id: 'p' + (pi++), type: 'play', ps: from, pe: to });
+    }
     for (var i = 0; i < T.length; i++) {
       var sl = T[i];
       if (sl.t === 'nap') {
@@ -379,6 +386,20 @@
             f = lo > hi ? lo : clamp(Math.max(target, minS), lo, hi);
           }
         }
+        if (fa.as == null) {
+          // 계획 수유가 실제 기록된 낮잠(뒤 순서의 낮잠 포함) 안에 떨어지면 그 낮잠이 끝난 뒤로 민다
+          for (var tries = 0; tries < 4; tries++) {
+            var moved = false;
+            for (var q = 0, qi = 0; q < T.length; q++) {
+              if (T[q].t !== 'nap') continue;
+              var ra = rec[T[q].id], qlen = P.nap[qi++];
+              if (ra.as == null) continue;
+              var rEnd = ra.ae != null ? ra.ae : ra.as + qlen;
+              if (f >= ra.as && f < rEnd) { f = rEnd + NAP_FEED_GAP; moved = true; }
+            }
+            if (!moved) break;
+          }
+        }
         var fe = fa.ae != null ? fa.ae : f + sl.len;
         play(f); items.push({ id: sl.id, type: 'feed', ps: f, pe: fe });
         cursor = Math.max(cursor, fe); feedAt.push(f); prevFeedStart = f; prevFeedEnd = fe;
@@ -392,10 +413,16 @@
         var bedEnd = ba.ae != null ? ba.ae : f4 + sl.len;
         if (sl.bath) { var bs = f4 - bathTotal, be = bs + sl.bath.len; if (bs >= cursor) { play(bs); items.push({ id: 'bath', type: 'bath', ps: bs, pe: be }); cursor = be; } }
         play(f4); items.push({ id: 'bed', type: 'bed', ps: f4, pe: bedEnd }); feedAt.push(f4);
-        return { items: items, start: start, bedEnd: bedEnd, natural: natural + sl.len, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin, bedTerm: sl.term };
+        return { items: byTime(items), start: start, bedEnd: bedEnd, natural: natural + sl.len, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin, bedTerm: sl.term };
       }
     }
-    return { items: items, start: start, bedEnd: cursor, natural: cursor, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin };
+    return { items: byTime(items), start: start, bedEnd: cursor, natural: cursor, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin };
+  }
+  // 카드는 루틴 순서가 아니라 실제 시작 시각 순으로 보여준다 (기록한 낮잠이 수유보다 앞서면 낮잠 카드가 먼저)
+  function byTime(items) {
+    return items.map(function (it, i) { return { it: it, i: i }; })
+      .sort(function (a, b) { return (a.it.ps - b.it.ps) || (a.i - b.i); })
+      .map(function (x) { return x.it; });
   }
   function merged(actual, frz) {
     var a = actual || {}, f = frz || {};
