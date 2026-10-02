@@ -562,20 +562,20 @@
     var src = preset ? preset.items : defaultItems();
     var dp = defaultPreset();
     ui.pe = { id: preset ? preset.id : null, name: preset ? preset.name : '', c: preset ? preset.c : null, makeDefault: !!(preset && dp && dp.id === preset.id),
-      items: sortItems(src).map(function (x) { return { k: newKey(), t: x.t, s: x.s, e: x.e }; }) };
+      items: src.map(function (x) { return { k: newKey(), t: x.t, s: x.s, e: x.e }; }) };
     ui.mode = 'preset'; ui.open = null; ui.draft = null; render();
   }
   function savePreset() {
     var pe = ui.pe; if (!pe) return;
     var nameEl = document.getElementById('peName'); if (nameEl) pe.name = nameEl.value.trim();
     if (!pe.name) { toast('프리셋 이름을 입력해주세요'); return; }
-    var its = sortItems(pe.items);
+    var its = pe.items;   // 카드 순서는 편집 화면의 순서 그대로
     if (!its.length || its[0].t !== 'wake') { toast('기상 카드가 맨 앞이어야 해요'); return; }
     if (its[its.length - 1].t !== 'bed') { toast('수유 후 입면 카드가 맨 뒤여야 해요'); return; }
     for (var i = 0; i < its.length; i++) {
       var x = its[i];
       if (x.t !== 'wake' && x.e < x.s) { toast(labelOfPe(its, i) + ': 종료가 시작보다 앞이에요'); return; }
-      if (i > 0 && x.s < its[i - 1].e) { toast(labelOfPe(its, i - 1) + '와 ' + labelOfPe(its, i) + '가 겹쳐요'); return; }
+      if (i > 0 && x.s < its[i - 1].e) { toast(labelOfPe(its, i - 1) + '와 ' + labelOfPe(its, i) + '의 시각이 순서와 맞지 않아요'); return; }
     }
     var id = pe.id || sid();
     state.presets[id] = { id: id, name: pe.name, c: pe.c != null ? pe.c : now(), u: now(),
@@ -671,7 +671,7 @@
     return h;
   }
   function renderPresetEditor() {
-    var pe = ui.pe, sorted = sortItems(pe.items);
+    var pe = ui.pe, sorted = pe.items;
     var h = '<div class="card"><div class="cardhead"><h2>' + (pe.id ? '프리셋 수정' : '프리셋 만들기') + '</h2></div>' +
       '<label class="flabel">프리셋 이름</label><input class="textinput" id="peName" type="text" maxlength="30" placeholder="예: 평일 루틴" value="' + esc(pe.name) + '"></div>';
     h += '<div class="rows">';
@@ -758,10 +758,9 @@
   }
   function updatePeDom() {
     var pe = ui.pe; if (!pe) return;
-    var sorted = sortItems(pe.items);
-    pe.items.forEach(function (x) {
+    var sorted = pe.items;
+    pe.items.forEach(function (x, idx) {
       var card = document.querySelector('.pecard[data-k="' + x.k + '"]'); if (!card) return;
-      var idx = sorted.indexOf(x);
       var chip = card.querySelector('.chip'); if (chip) chip.textContent = labelOfPe(sorted, idx);
       var dur = card.querySelector('.pedur'); if (dur) dur.textContent = peInfo(sorted, idx);
       ['s', 'e'].forEach(function (k) {
@@ -781,7 +780,7 @@
   // 카드를 위/아래 이웃과 바꾼다. 각 카드의 길이와 두 카드 사이 간격은 그대로 두고 자리만 바꾼다
   function movePeCard(k, d) {
     var pe = ui.pe; if (!pe) return false;
-    var sorted = sortItems(pe.items), idx = -1;
+    var sorted = pe.items, idx = -1;
     sorted.forEach(function (y, i) { if (y.k === k) idx = i; });
     var j = idx + d;
     if (idx < 0 || j < 1 || j > sorted.length - 2) return false;
@@ -791,6 +790,7 @@
     var gap = Math.max(late.s - early.e, 0), durE = early.e - early.s, durL = late.e - late.s, s0 = early.s;
     late.s = s0; late.e = s0 + durL;
     early.s = late.e + gap; early.e = early.s + durE;
+    pe.items[idx] = b; pe.items[j] = a;   // 목록 순서도 바꾼다
     return true;
   }
   function setPeTime(k, f, v) {
@@ -931,23 +931,19 @@
     if (act === 'pe-del') { if (!ui.pe) return; var nameEl1 = document.getElementById('peName'); if (nameEl1) ui.pe.name = nameEl1.value; ui.pe.items = ui.pe.items.filter(function (y) { return y.k !== b.dataset.k; }); render(); return; }
     if (act === 'pe-add') {
       if (!ui.pe) return; var nameEl2 = document.getElementById('peName'); if (nameEl2) ui.pe.name = nameEl2.value;
-      var t = b.dataset.t, sorted = sortItems(ui.pe.items), bed = null, lastEnd = null;
-      sorted.forEach(function (y) { if (y.t === 'bed') bed = y; else if (lastEnd == null || y.e > lastEnd) lastEnd = y.e; });
-      var len = t === 'nap' ? 30 : 15, s0 = lastEnd != null ? lastEnd : (bed ? bed.s - 60 : M(12, 0));
-      if (bed && s0 + len > bed.s) s0 = Math.max(bed.s - len, lastEnd != null ? lastEnd : 0);
-      ui.pe.items.push({ k: newKey(), t: t, s: s0, e: s0 + len });
+      var t = b.dataset.t, list = ui.pe.items, bedIdx = -1;
+      list.forEach(function (y, i) { if (y.t === 'bed') bedIdx = i; });
+      var prev = bedIdx > 0 ? list[bedIdx - 1] : list[list.length - 1], bed = bedIdx >= 0 ? list[bedIdx] : null;
+      var len = t === 'nap' ? 30 : 15, s0 = prev ? prev.e : M(12, 0);
+      if (bed && s0 + len > bed.s) s0 = Math.max(bed.s - len, prev ? prev.e : 0);
+      var card = { k: newKey(), t: t, s: s0, e: s0 + len };
+      if (bedIdx >= 0) list.splice(bedIdx, 0, card); else list.push(card);
       render(); toast(LABEL[t] + ' 카드를 추가했어요. 시각을 조정해주세요'); return;
     }
     if (act === 'pe-save') { savePreset(); return; }
     if (act === 'pe-cancel') { ui.pe = null; ui.mode = 'plist'; render(); return; }
   });
   document.getElementById('menuBtn').addEventListener('click', function () { var m = document.getElementById('menu'); m.hidden = !m.hidden; });
-  document.addEventListener('focusout', function (e) {
-    var el = e.target; if (!ui.pe || ui.mode !== 'preset' || !el.dataset || !el.dataset.k) return;
-    var domOrder = [].map.call(document.querySelectorAll('.pecard'), function (c) { return c.dataset.k; }).join(',');
-    var want = sortItems(ui.pe.items).map(function (x) { return x.k; }).join(',');
-    if (domOrder !== want) setTimeout(function () { if (ui.mode === 'preset' && !editing()) render(); }, 250);
-  });
   document.addEventListener('change', function (e) {
     var el = e.target; if (!el.dataset) return;
     if (el.id === 'peName' && ui.pe) { ui.pe.name = el.value; return; }
