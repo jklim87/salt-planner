@@ -178,7 +178,8 @@
   .pecard .pedur { flex: 1; font-size: 12.5px; color: var(--muted); }
   .pecard label { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin: 8px 0 4px; }
   .linkbtn { border: 0; background: transparent; padding: 4px 6px; font-size: 13px; }
-  .mv { width: 32px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface2); font-size: 12px; line-height: 1; padding: 0; flex: none; }
+  .mv { width: 32px; height: 30px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface2); color: var(--ink); font-size: 12px; line-height: 1; padding: 0; }
+  .mv:disabled { opacity: 0.35; cursor: default; }
   .linkbtn.danger { color: var(--danger); }
   .addbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 12px; }
   .card .actions { display: flex; justify-content: flex-end; gap: 8px; }
@@ -590,19 +591,6 @@
     if (state.def && state.def.id === id) state.def = { id: null, u: now() };
     save(); render(); toast('프리셋을 지웠어요');
   }
-  // 카드를 위/아래 이웃과 바꾼다. 두 카드의 길이와 둘 사이 간격은 유지되므로 다른 카드와 겹치지 않는다
-  function movePeCard(k, dir) {
-    var pe = ui.pe; if (!pe) return;
-    var sorted = sortItems(pe.items), idx = -1;
-    sorted.forEach(function (y, i) { if (y.k === k) idx = i; });
-    if (idx < 0) return;
-    var j = idx + dir, other = sorted[j];
-    if (!other || other.t === 'wake' || other.t === 'bed') { toast(dir < 0 ? '더 위로 옮길 수 없어요' : '더 아래로 옮길 수 없어요'); return; }
-    var first = dir < 0 ? other : sorted[idx], second = dir < 0 ? sorted[idx] : other;   // first가 앞, second가 뒤
-    var gap = Math.max(second.s - first.e, 0), lenF = first.e - first.s, lenS = second.e - second.s, startAt = first.s;
-    second.s = startAt; second.e = startAt + lenS;
-    first.s = second.e + gap; first.e = first.s + lenF;
-  }
   // 편집 중 카드 보조 표기: 소요시간, 수유에는 수유텀(직전 수유 시작부터), 낮잠에는 깨시(직전 잠 종료부터)
   function peInfo(sorted, idx) {
     var x = sorted[idx];
@@ -689,9 +677,11 @@
     h += '<div class="rows">';
     sorted.forEach(function (x, idx) {
       var fixed = x.t === 'wake' || x.t === 'bed';
+      var canUp = !fixed && idx > 1, canDown = !fixed && idx < sorted.length - 2;   // 기상 위로, 수유 후 입면 아래로는 못 간다
       h += '<div class="pecard" data-k="' + x.k + '"><div class="pehead"><span class="chip ' + x.t + '">' + labelOfPe(sorted, idx) + '</span>' +
         '<span class="pedur">' + peInfo(sorted, idx) + '</span>' +
-        (fixed ? '' : '<button class="mv" data-act="pe-move" data-d="-1" data-k="' + x.k + '" aria-label="위로">▲</button><button class="mv" data-act="pe-move" data-d="1" data-k="' + x.k + '" aria-label="아래로">▼</button>' +
+        (fixed ? '' : '<button class="mv" data-act="pe-move" data-d="-1" data-k="' + x.k + '" aria-label="위로"' + (canUp ? '' : ' disabled') + '>▲</button>' +
+                      '<button class="mv" data-act="pe-move" data-d="1" data-k="' + x.k + '" aria-label="아래로"' + (canDown ? '' : ' disabled') + '>▼</button>' +
                       '<button class="linkbtn danger" data-act="pe-del" data-k="' + x.k + '">삭제</button>') + '</div>' +
         '<label>' + (x.t === 'wake' ? '기상 시각' : '시작') + '</label>' + timeCtl('s', x.s, { act: 'ptm', k: x.k }) +
         (x.t === 'wake' ? '' : '<label>종료</label>' + timeCtl('e', x.e, { act: 'ptm', k: x.k })) + '</div>';
@@ -787,6 +777,21 @@
     var d = ui.draft; if (!d || v == null) return;
     if (f === 'as' && d.as != null && d.ae != null) d.ae = d.ae + (v - d.as);
     d[f] = v;
+  }
+  // 카드를 위/아래 이웃과 바꾼다. 각 카드의 길이와 두 카드 사이 간격은 그대로 두고 자리만 바꾼다
+  function movePeCard(k, d) {
+    var pe = ui.pe; if (!pe) return false;
+    var sorted = sortItems(pe.items), idx = -1;
+    sorted.forEach(function (y, i) { if (y.k === k) idx = i; });
+    var j = idx + d;
+    if (idx < 0 || j < 1 || j > sorted.length - 2) return false;
+    var a = sorted[idx], b = sorted[j];
+    if (a.t === 'wake' || a.t === 'bed' || b.t === 'wake' || b.t === 'bed') return false;
+    var early = d < 0 ? b : a, late = d < 0 ? a : b;
+    var gap = Math.max(late.s - early.e, 0), durE = early.e - early.s, durL = late.e - late.s, s0 = early.s;
+    late.s = s0; late.e = s0 + durL;
+    early.s = late.e + gap; early.e = early.s + durE;
+    return true;
   }
   function setPeTime(k, f, v) {
     var pe = ui.pe; if (!pe || v == null) return;
@@ -919,6 +924,10 @@
       var nameEl0 = document.getElementById('peName'); if (nameEl0) ui.pe.name = nameEl0.value;
       setPeTime(k, f2, bump(x[f2], d)); render(); return;
     }
+    if (act === 'pe-move') {
+      if (!ui.pe) return; var nameElM = document.getElementById('peName'); if (nameElM) ui.pe.name = nameElM.value;
+      if (movePeCard(b.dataset.k, d)) render(); return;
+    }
     if (act === 'pe-del') { if (!ui.pe) return; var nameEl1 = document.getElementById('peName'); if (nameEl1) ui.pe.name = nameEl1.value; ui.pe.items = ui.pe.items.filter(function (y) { return y.k !== b.dataset.k; }); render(); return; }
     if (act === 'pe-add') {
       if (!ui.pe) return; var nameEl2 = document.getElementById('peName'); if (nameEl2) ui.pe.name = nameEl2.value;
@@ -929,11 +938,16 @@
       ui.pe.items.push({ k: newKey(), t: t, s: s0, e: s0 + len });
       render(); toast(LABEL[t] + ' 카드를 추가했어요. 시각을 조정해주세요'); return;
     }
-    if (act === 'pe-move') { if (!ui.pe) return; var nameEl3 = document.getElementById('peName'); if (nameEl3) ui.pe.name = nameEl3.value; movePeCard(b.dataset.k, d); render(); return; }
     if (act === 'pe-save') { savePreset(); return; }
     if (act === 'pe-cancel') { ui.pe = null; ui.mode = 'plist'; render(); return; }
   });
   document.getElementById('menuBtn').addEventListener('click', function () { var m = document.getElementById('menu'); m.hidden = !m.hidden; });
+  document.addEventListener('focusout', function (e) {
+    var el = e.target; if (!ui.pe || ui.mode !== 'preset' || !el.dataset || !el.dataset.k) return;
+    var domOrder = [].map.call(document.querySelectorAll('.pecard'), function (c) { return c.dataset.k; }).join(',');
+    var want = sortItems(ui.pe.items).map(function (x) { return x.k; }).join(',');
+    if (domOrder !== want) setTimeout(function () { if (ui.mode === 'preset' && !editing()) render(); }, 250);
+  });
   document.addEventListener('change', function (e) {
     var el = e.target; if (!el.dataset) return;
     if (el.id === 'peName' && ui.pe) { ui.pe.name = el.value; return; }
