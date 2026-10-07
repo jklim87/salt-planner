@@ -442,7 +442,7 @@
           }
         }
         var fe = fa.ae != null ? fa.ae : f + sl.len;
-        play(f); items.push({ id: sl.id, type: 'feed', ps: f, pe: fe, ml: sl.ml });
+        play(f); items.push({ id: sl.id, type: 'feed', ps: f, pe: fe, ml: fa.ml != null ? fa.ml : sl.ml });   // 시간표에서 바꾼 수유량이 있으면 그 값
         cursor = Math.max(cursor, fe); feedAt.push(f); prevFeedStart = f; prevFeedEnd = fe;
       } else if (sl.t === 'bed') {
         // 마지막 수유는 마지막 낮잠 종료 + 마지막 간격(놀이 + 목욕)을 그대로 따라간다. 낮잠이 짧으면 수유와 입면도 당겨진다.
@@ -456,7 +456,7 @@
         var bs0 = ba.as != null ? ba.as : fe4;
         var bedEnd = ba.ae != null ? ba.ae : bs0 + sl.len;
         if (sl.bath) { var bs = f4 - bathTotal, be = bs + sl.bath.len; if (bs >= cursor) { play(bs); items.push({ id: 'bath', type: 'bath', ps: bs, pe: be }); cursor = be; } }
-        if (sl.feed) { play(f4); items.push({ id: bf.id, type: 'feed', ps: f4, pe: fe4, ml: bf.ml }); cursor = Math.max(cursor, fe4); }
+        if (sl.feed) { play(f4); items.push({ id: bf.id, type: 'feed', ps: f4, pe: fe4, ml: fa4.ml != null ? fa4.ml : bf.ml }); cursor = Math.max(cursor, fe4); }
         feedAt.push(f4);
         play(bs0); items.push({ id: 'bed', type: 'bed', ps: bs0, pe: bedEnd });
         return { items: byTime(items), start: start, bedEnd: bedEnd, natural: natural + bf.len + sl.len, napEnd: napEnd, feedAt: feedAt, feedMin: feedMin, bedTerm: bf.term };
@@ -472,7 +472,7 @@
   }
   function merged(actual, frz) {
     var a = actual || {}, f = frz || {};
-    return { as: a.as != null ? a.as : (f.as != null ? f.as : null), ae: a.ae != null ? a.ae : (f.ae != null ? f.ae : null) };
+    return { as: a.as != null ? a.as : (f.as != null ? f.as : null), ae: a.ae != null ? a.ae : (f.ae != null ? f.ae : null), ml: a.ml != null ? a.ml : null };
   }
   // 직전에 표시하던 일정 중 이미 지난(또는 진행 중인) 항목은 그 시각 그대로 묶는다. 재계산은 지금 이후만 바꾼다
   function freezePast(day) {
@@ -794,6 +794,7 @@
       '<label>실제 시작</label>' + timeCtl('as', d.as, { now: 'now' }) +
       '<label>' + (it.type === 'bed' ? '입면 (잠든 시각)' : '실제 종료') + '</label>' + timeCtl('ae', d.ae, { now: 'now' }) +
       '<div class="dur">' + (d.as != null && d.ae != null ? '시작~종료 ' + fmtDur(d.ae - d.as) : '') + '</div>' +
+      (it.type === 'feed' ? '<label>수유량</label><div class="mlinput"><button class="pm" data-act="mlpm" data-d="-10" aria-label="10ml 빼기">−</button><input type="number" inputmode="numeric" step="10" min="0" max="999" data-f="ml" value="' + (d.ml != null ? d.ml : '') + '" placeholder="예: 150"><button class="pm" data-act="mlpm" data-d="10" aria-label="10ml 더하기">+</button><span>ml</span></div>' : '') +
       '<div class="actions"><button class="btn secondary small" data-act="cancel">취소</button><button class="btn small" data-act="save">저장</button></div></div>';
   }
   // 시간 입력 중에는 화면을 통째로 다시 그리지 않는다. iOS 사파리는 시간 선택기를 돌릴 때마다 change를 보내는데,
@@ -806,6 +807,8 @@
     });
     var dur = ed.querySelector('.dur');
     if (dur) dur.textContent = (ui.draft.as != null && ui.draft.ae != null) ? '시작~종료 ' + fmtDur(ui.draft.ae - ui.draft.as) : '';
+    var mlInp = ed.querySelector('input[data-f="ml"]');
+    if (mlInp && document.activeElement !== mlInp) mlInp.value = ui.draft.ml != null ? ui.draft.ml : '';
   }
   function updatePeDom() {
     var pe = ui.pe; if (!pe) return;
@@ -938,9 +941,10 @@
     // 카드 편집
     if (act === 'tm') { if (!it || !ui.draft) return; var f1 = b.dataset.f; setDraft(f1, bump(ui.draft[f1], d)); render(); return; }
     if (act === 'now') { if (!it || !ui.draft) return; setDraft(b.dataset.f || 'as', nowMin()); render(); return; }
+    if (act === 'mlpm') { if (!it || !ui.draft) return; var cur = ui.draft.ml != null ? ui.draft.ml : 0; ui.draft.ml = Math.max(0, cur + d); updateEditorDom(); return; }
     if (act === 'toggle') {
       if (ui.open === id) { ui.open = null; ui.draft = null; }
-      else { ui.open = id; ui.draft = { as: it.ps, ae: it.type === 'wake' ? null : it.pe }; }   // 기록이 없으면 계산된 계획 시각이 기본값
+      else { ui.open = id; ui.draft = { as: it.ps, ae: it.type === 'wake' ? null : it.pe, ml: it.ml != null ? it.ml : null }; }   // 기록이 없으면 계산된 계획 시각이 기본값
       render(); return;
     }
     if (act === 'cancel') { ui.open = null; ui.draft = null; render(); return; }
@@ -949,6 +953,13 @@
       if (it.type === 'wake') {
         var ws = Math.max(ui.draft.as != null ? ui.draft.as : day.start, WAKE_FLOOR);
         day.rec.wake = { as: ws, ae: null, u: now() }; day.start = ws; day.su = now();   // 기상 시각 = 하루의 시작 (6:00 이전은 6:00)
+      } else if (it.type === 'feed') {
+        // 수유량만 바꾸고 시각은 손대지 않았으면 시각은 기록하지 않는다 (계획 시각이 실제 기록으로 굳지 않게)
+        var r0 = day.rec[it.id] || {}, hadTime = r0.as != null || r0.ae != null;
+        var timeChanged = ui.draft.as !== it.ps || ui.draft.ae !== it.pe;
+        var mlChanged = (ui.draft.ml != null ? ui.draft.ml : null) !== (it.ml != null ? it.ml : null);
+        var onlyMl = mlChanged && !timeChanged && !hadTime;
+        day.rec[it.id] = { as: onlyMl ? null : ui.draft.as, ae: onlyMl ? null : ui.draft.ae, ml: ui.draft.ml != null ? ui.draft.ml : null, u: now() };
       } else day.rec[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
       ui.open = null; ui.draft = null;
       var r = buildDay(day); save(); render();
@@ -1004,6 +1015,7 @@
     if (el.id === 'peName' && ui.pe) { ui.pe.name = el.value; return; }
     if (el.id === 'peDefault' && ui.pe) { ui.pe.makeDefault = !!el.checked; return; }
     var f = el.dataset.f; if (!f) return;
+    if (f === 'ml' && el.closest('.editor') && ui.draft) { var mv = parseInt(el.value, 10); ui.draft.ml = isNaN(mv) ? null : mv; updateEditorDom(); return; }
     if (f === 'ml' && el.dataset.k && ui.pe) {
       var mlv = parseInt(el.value, 10);
       ui.pe.items.forEach(function (y) { if (y.k === el.dataset.k) y.ml = isNaN(mlv) ? null : mlv; });
