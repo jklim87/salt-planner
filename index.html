@@ -254,7 +254,7 @@
   'use strict';
   var KEY = 'saltday.v5';
   var SYNC_URL = 'https://salt-planner-default-rtdb.asia-southeast1.firebasedatabase.app/salt/v5';
-  var WAKE_DEFAULT = 6 * 60 + 30; // 시작 화면 기본값. 시작 시각에 제한은 없다 (새벽 4시 시작도 가능). 프리셋의 모든 카드는 시작 시각 차이만큼 함께 움직인다
+  var WAKE_DEFAULT = 7 * 60;      // 시작 화면 기본값 (07:00). 시작 시각에 제한은 없다 (새벽 4시 시작도 가능). 프리셋의 모든 카드는 시작 시각 차이만큼 함께 움직인다
   // 잠든 시각의 상한은 그 날 루틴(프리셋)이 정한 잠든 시각(시작 시각 차이만큼 이동), 하한은 그보다 1시간 앞. 그 밖의 시각 제한은 없다
   var DAY_WINDOW = 60;
   var FEED_MIN = 150, FEED_MAX = 210;   // 수유 텀은 불가피할 때만 2시간 30분 ~ 3시간 30분 안에서 조정
