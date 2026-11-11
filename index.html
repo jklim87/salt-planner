@@ -31,6 +31,7 @@
     --chip-play: #CDEFD9;
     --chip-bath: #BFE6F2;
     --chip-bed: #C9D9F7;
+    --chip-poop: #EAD5B3;
     --chip-ink: #1F3A52;
     --shadow: 0 2px 10px rgba(31, 58, 82, 0.08);
     --focus: #3D8FD1;
@@ -45,7 +46,7 @@
       --bg: #0F1B27; --header: #1B3A52; --surface: #172635; --surface2: #1E3042;
       --ink: #E6F0F7; --muted: #93AEC4; --line: #2A4256; --accent: #6FB6EA; --accent-ink: #0F1B27;
       --danger: #E48A82;
-      --chip-wake: #5A4A1F; --chip-feed: #5E3A2C; --chip-nap: #3B3560; --chip-play: #234A36; --chip-bath: #1F4A5A; --chip-bed: #2A3D5E;
+      --chip-wake: #5A4A1F; --chip-feed: #5E3A2C; --chip-nap: #3B3560; --chip-play: #234A36; --chip-bath: #1F4A5A; --chip-bed: #2A3D5E; --chip-poop: #5C4728;
       --chip-ink: #E6F0F7; --shadow: 0 2px 10px rgba(0, 0, 0, 0.35); --scrim: rgba(0, 0, 0, 0.55);
       --hdr-ink: #E6F0F7; --hdr-sub: #B7CCDD; --hdr-btn: rgba(255,255,255,0.12); --now-line: #6FB6EA;
     }
@@ -54,7 +55,7 @@
     --bg: #0F1B27; --header: #1B3A52; --surface: #172635; --surface2: #1E3042;
     --ink: #E6F0F7; --muted: #93AEC4; --line: #2A4256; --accent: #6FB6EA; --accent-ink: #0F1B27;
     --danger: #E48A82;
-    --chip-wake: #5A4A1F; --chip-feed: #5E3A2C; --chip-nap: #3B3560; --chip-play: #234A36; --chip-bath: #1F4A5A; --chip-bed: #2A3D5E;
+    --chip-wake: #5A4A1F; --chip-feed: #5E3A2C; --chip-nap: #3B3560; --chip-play: #234A36; --chip-bath: #1F4A5A; --chip-bed: #2A3D5E; --chip-poop: #5C4728;
     --chip-ink: #E6F0F7; --shadow: 0 2px 10px rgba(0, 0, 0, 0.35); --scrim: rgba(0, 0, 0, 0.55);
     --hdr-ink: #E6F0F7; --hdr-sub: #B7CCDD; --hdr-btn: rgba(255,255,255,0.12); --now-line: #6FB6EA;
   }
@@ -134,6 +135,18 @@
   .chip.nap { background: var(--chip-nap); }
   .chip.play { background: var(--chip-play); }
   .chip.bath { background: var(--chip-bath); }
+  .chip.poop { background: var(--chip-poop); }
+  /* 대변 기록 버튼: 시간표 화면 오른쪽 아래에 항상 떠 있다 */
+  .fab {
+    position: fixed; right: max(16px, calc(50vw - 260px + 16px)); bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface);
+    box-shadow: 0 6px 18px rgba(31, 58, 82, 0.28); font-size: 30px; line-height: 1; z-index: 10;
+    display: grid; place-items: center; padding: 0;
+  }
+  .fab:active { transform: scale(0.94); }
+  .view-day { padding-bottom: 84px; }
+  .modal .box .actions.yn { flex-direction: row-reverse; justify-content: center; }
+  .modal .box .actions.yn .btn { min-width: 96px; }
 
   .editor { padding: 6px 12px 14px 15px; border-top: 1px dashed var(--line); background: var(--surface2); }
   .editor label { display: block; font-size: 12px; color: var(--muted); letter-spacing: 0.04em; margin: 6px 0 5px; }
@@ -240,11 +253,12 @@
 
   <main id="view"></main>
 
+  <button class="fab" id="poopFab" data-act="poop" aria-label="대변 기록" hidden>💩</button>
   <div class="toast" id="toast"></div>
   <div class="modal" id="modal" hidden>
     <div class="box">
       <p id="modalMsg"></p>
-      <div class="actions"><button class="btn secondary" data-act="modal-cancel">취소</button><button class="btn" data-act="modal-ok">확인</button></div>
+      <div class="actions" id="modalActions"><button class="btn secondary" data-act="modal-cancel" id="modalCancel">취소</button><button class="btn" data-act="modal-ok" id="modalOk">확인</button></div>
     </div>
   </div>
 </div>
@@ -266,7 +280,9 @@
   var M = function (h, m) { return h * 60 + m; };
   // 수유 카드의 ml은 목표 조유량. 입면(bed)은 마지막 수유 종료부터 BED_LEN분으로 자동 계산된다(auto)
   var BED_LEN = 10;
-  var PLAN_V = 7;                 // 일정 생성 규칙 버전. 다른 버전으로 만들어진 일정은 다시 계산한다
+  // 마지막 세트(목욕 → 수유 → 입면)는 길이가 고정이고 빈틈 없이 붙어서 함께 움직인다
+  var BATH_LEN = 15, LAST_FEED_LEN = 10;
+  var PLAN_V = 8;                 // 일정 생성 규칙 버전. 다른 버전으로 만들어진 일정은 다시 계산한다
   var DEFAULT_ITEMS = [
     { t: 'wake', s: M(6, 30), e: M(6, 30) },
     { t: 'feed', s: M(6, 30), e: M(6, 40), ml: 150 },
@@ -353,10 +369,11 @@
     }
     var lf = lfi >= 0 ? out[lfi] : null;
     if (lf) {
+      // 마지막 세트는 마지막 수유 시작 하나로 정해진다: 목욕 15분 → 수유 10분 → 입면 10분, 사이에 빈틈 없음
+      lf.e = lf.s + LAST_FEED_LEN;
       bed.s = lf.e; bed.e = lf.e + BED_LEN;
-      // 목욕 종료 = 마지막 수유 시작. 길이는 그대로 두고 자리만 붙인다 (목욕 → 수유 → 입면 사이에 빈틈 없음)
       var bath2 = bai >= 0 ? out[lfi - 1] : null;
-      if (bath2 && bath2.t === 'bath') { var bl = Math.max(bath2.e - bath2.s, 0); bath2.e = lf.s; bath2.s = lf.s - bl; }
+      if (bath2 && bath2.t === 'bath') { bath2.e = lf.s; bath2.s = lf.s - BATH_LEN; }
     }
     return out;
   }
@@ -475,18 +492,17 @@
         // 마지막 수유는 마지막 낮잠 종료 + 마지막 간격(놀이 + 목욕)을 그대로 따라간다. 낮잠이 짧으면 수유와 입면도 당겨진다.
         // 직전 수유와의 텀은 2시간 30분을 지향하되(직전 수유를 당겨서 맞춤) 안 되면 2시간까지 허용. 입면은 마지막 수유 종료부터 BED_LEN분
         var bf = sl.feed || { id: 'feedX', len: 0, ml: null, term: null };
-        var fa4 = rec[bf.id] || {}, ba = rec.bed, natural = prevSleepEnd + P.lastGap;
+        var fa4 = rec[bf.id] || {}, natural = prevSleepEnd + P.lastGap;
         var bathTotal = sl.bath ? sl.bath.len + sl.bath.gap : 0;
         var bMin = bf.term != null ? Math.min(BED_FEED_MIN, bf.term) : BED_FEED_MIN;
         var f4 = fa4.as != null ? fa4.as : Math.max(natural, prevFeedStart != null ? prevFeedStart + bMin : 0, cursor + bathTotal);
-        var fe4 = fa4.ae != null ? fa4.ae : f4 + bf.len;
-        // 목욕 → 수유 → 입면은 한 세트. 입면 시작은 항상 마지막 수유 종료, 잠든 시각만 기록할 수 있다
+        // 목욕 → 수유 → 입면은 한 세트. 마지막 수유 시작(f4) 하나로 세 카드의 시작·종료가 모두 정해진다 (길이 고정, 빈틈 없음)
+        var fe4 = sl.feed ? f4 + LAST_FEED_LEN : f4;
         var bs0 = fe4;
-        var bedEnd = ba.ae != null ? Math.max(ba.ae, bs0) : bs0 + sl.len;
+        var bedEnd = bs0 + BED_LEN;
         if (sl.bath) {
-          // 목욕 종료는 항상 마지막 수유 시작. 앞 카드와 겹치면 그만큼 짧아진다
-          var bs = Math.max(f4 - bathTotal, cursor), be = Math.min(bs + sl.bath.len, f4);
-          if (be > bs) { play(bs); items.push({ id: 'bath', type: 'bath', ps: bs, pe: be }); cursor = be; }
+          var bs = f4 - BATH_LEN;
+          play(bs); items.push({ id: 'bath', type: 'bath', ps: bs, pe: f4 }); cursor = Math.max(cursor, f4);
         }
         if (sl.feed) { play(f4); items.push({ id: bf.id, type: 'feed', ps: f4, pe: fe4, ml: fa4.ml != null ? fa4.ml : bf.ml }); cursor = Math.max(cursor, fe4); }
         feedAt.push(f4);
@@ -534,6 +550,7 @@
     var recs = {}, order = [];
     T.forEach(function (sl) { if (sl.t === 'bed' && sl.feed) order.push(sl.feed.id); order.push(sl.id); });
     order.forEach(function (id) { recs[id] = merged(day.rec[id], frozen[id]); });
+    recs.bed = { as: null, ae: null, ml: null };   // 입면은 마지막 수유에서 계산된다. 따로 남은 옛 기록은 쓰지 않는다
     // 실제 기록이나 지난 시각으로 묶인 마지막 항목보다 앞은 바꾸지 않는다. 끝난 낮잠도 바꾸지 않는다
     var lastRec = -1;
     order.forEach(function (id, pos) { var a = recs[id]; if (a.as != null || a.ae != null) lastRec = pos; });
@@ -733,8 +750,8 @@
   }
   // 자동으로 정해지는 시각 안내: 입면은 마지막 수유 종료 + 10분, 목욕 종료는 마지막 수유 시작
   function autoText(x) {
-    if (x.t === 'bed') return hm(x.s) + '~' + hm(x.e) + ' · 마지막 수유 종료 후 ' + BED_LEN + '분 (자동)';
-    return '종료 ' + hm(x.e) + ' · 마지막 수유 시작에 맞춤 (자동)';
+    if (x.t === 'bath') return hm(x.s) + '~' + hm(x.e) + ' · 마지막 수유 직전 ' + BATH_LEN + '분 고정 (자동)';
+    return LABEL[x.t] + ' ' + (x.e - x.s) + '분 고정 · 시작이나 종료를 바꾸면 목욕·수유·입면이 함께 움직여요';
   }
   // 편집 중 카드 보조 표기: 소요시간, 수유에는 수유텀(직전 수유 시작부터), 낮잠에는 깨시(직전 잠 종료부터)
   function peInfo(sorted, idx) {
@@ -767,6 +784,8 @@
   function render() {
     document.getElementById('hdrDate').textContent = fmtDate(todayKey()) + ' · 생후 ' + ageDays() + '일';
     renderMenu();
+    var fab = document.getElementById('poopFab');
+    if (fab) fab.hidden = !(ui.mode == null && getDay(todayKey()));   // 시간표 화면에서만 떠 있다
     if (ui.mode === 'preset' && ui.pe) { $view.innerHTML = renderPresetEditor(); return; }
     if (ui.mode === 'plist') { $view.innerHTML = renderPresetList(); return; }
     var day = getDay(todayKey());
@@ -831,9 +850,9 @@
         (fixed ? '' : '<button class="mv" data-act="pe-move" data-d="-1" data-k="' + x.k + '" aria-label="위로"' + (canUp ? '' : ' disabled') + '>▲</button>' +
                       '<button class="mv" data-act="pe-move" data-d="1" data-k="' + x.k + '" aria-label="아래로"' + (canDown ? '' : ' disabled') + '>▼</button>') +
         (canDel ? '<button class="linkbtn danger" data-act="pe-del" data-k="' + x.k + '">삭제</button>' : '') + '</div>' +
-        (x.t === 'bed' ? '<div class="auto">' + autoText(x) + '</div>'
-          : '<label>' + (x.t === 'wake' ? '기상 시각' : '시작') + '</label>' + timeCtl('s', x.s, { act: 'ptm', k: x.k }) +
-            (x.t === 'wake' ? '' : x.t === 'bath' ? '<div class="auto">' + autoText(x) + '</div>' : '<label>종료</label>' + timeCtl('e', x.e, { act: 'ptm', k: x.k })) +
+        (x.t === 'bath' ? '<div class="auto">' + autoText(x) + '</div>' : '<label>' + (x.t === 'wake' ? '기상 시각' : '시작') + '</label>' + timeCtl('s', x.s, { act: 'ptm', k: x.k }) +
+            (x.t === 'wake' ? '' : '<label>종료</label>' + timeCtl('e', x.e, { act: 'ptm', k: x.k })) +
+            (idx >= tailStart ? '<div class="auto">' + autoText(x) + '</div>' : '') +
             (x.t === 'feed' ? '<label>목표 조유량</label><div class="mlinput"><input type="number" inputmode="numeric" step="10" min="0" max="999" data-f="ml" data-k="' + x.k + '" value="' + (x.ml != null ? x.ml : '') + '" placeholder="예: 150"><span>ml</span></div>' : '')) + '</div>';
     });
     h += '</div>';
@@ -860,10 +879,13 @@
   }
   function renderDay(day) {
     var n = nowMin(), items = day.items, h = renderSummary(items) + '<div class="rows">';
+    var bfIdD = bedFeedIdOf(day), evs = evList(day), ei = 0;
     items.forEach(function (it, i) {
+      // 대변 같은 순간 기록은 그 시각 자리에 끼워 넣는다
+      while (ei < evs.length && evs[ei].at < it.ps) h += renderEvRow(evs[ei++], n);
       var isNow = it.ps <= n && n < it.pe;
       var past = it.pe <= n && !isNow;
-      var rec = day.rec && day.rec[it.id];
+      var rec = day.rec && day.rec[(it.type === 'bath' || it.type === 'bed') ? bfIdD : it.id];
       var hasActual = !!(rec && (rec.as != null || rec.ae != null));
       var subs = [];
       if (it.type === 'nap') subs.push('수면 ' + fmtTerm(it.pe - it.ps));
@@ -885,7 +907,7 @@
       if (it.type === 'feed' && it.ml != null) subs.push('수유: ' + it.ml + 'ml');
       // 보조 표기가 여러 개면 한 줄에 하나씩 (좁은 화면에서 줄바꿈이 어긋나지 않게)
       var extra = subs.length ? '<div class="subs">' + subs.map(function (t) { return '<span class="sub">' + t + '</span>'; }).join('') + '</div>' : '';
-      var tappable = it.type === 'nap' || isFeedType(it.type) || it.type === 'wake';
+      var tappable = it.type === 'nap' || isFeedType(it.type) || it.type === 'wake';   // 목욕은 마지막 수유 직전 15분 고정이라 고칠 수 없다
       var timeHtml = it.type === 'wake' ? '<b>' + hm(it.ps) + '</b>' : '<b>' + hm(it.ps) + '</b>' + hm(it.pe);
       var inner = '<div class="time' + (hasActual ? ' actual' : '') + '">' + timeHtml + '</div>' +
         '<div class="title"><span class="chip ' + it.type + '">' + labelOf(items, i) + '</span>' + extra + '</div>';
@@ -896,7 +918,27 @@
         (tappable && ui.open === it.id ? renderEditor(it) : '') +
       '</div>';
     });
-    return h + '</div>' + renderAddBar();
+    while (ei < evs.length) h += renderEvRow(evs[ei++], n);
+    return '<div class="view-day">' + h + '</div>' + renderAddBar() + '</div>';
+  }
+  // ---- 순간 기록 (대변) ----
+  var EV_LABEL = { poop: '대변' };
+  function evList(day) {
+    var ev = day.ev || {};
+    return Object.keys(ev).map(function (k) { var e = ev[k]; return e && !e.del && e.at != null ? { id: k, t: e.t || 'poop', at: e.at } : null; })
+      .filter(function (e) { return e; }).sort(function (a, b) { return a.at - b.at; });
+  }
+  function renderEvRow(ev, n) {
+    var id = 'ev:' + ev.id, open = ui.open === id;
+    var inner = '<div class="time actual"><b>' + hm(ev.at) + '</b></div><div class="title"><span class="chip ' + ev.t + '">' + (EV_LABEL[ev.t] || ev.t) + '</span></div>';
+    var ed = '';
+    if (open && ui.draft) {
+      ed = '<div class="editor" data-id="' + id + '"><label>시각</label>' + timeCtl('as', ui.draft.as, { now: 'now' }) +
+        '<div class="actions"><button class="linkbtn danger" data-act="del-ev">삭제</button><span class="grow"></span>' +
+        '<button class="btn secondary small" data-act="cancel">취소</button><button class="btn small" data-act="save">저장</button></div></div>';
+    }
+    return '<div class="row' + (ev.at <= n ? ' past' : '') + '"><button class="head" data-act="toggle" data-id="' + id + '" aria-expanded="' + open + '">' + inner +
+      '<svg class="chev' + (open ? ' open' : '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>' + ed + '</div>';
   }
   // 시간표 맨 아래: 낮잠/수유 카드 추가. 누르면 새 카드 편집창이 열린다
   function renderAddBar() {
@@ -919,9 +961,13 @@
     // 낮잠과 수유(마지막 수유 제외)는 오늘 시간표에서 지울 수 있다
     var day0 = getDay(todayKey());
     var canDel = !isNew && day0 && (it.type === 'nap' || (it.type === 'feed' && it.id !== bedFeedIdOf(day0)));
-    if (it.type === 'bed') {
-      return '<div class="editor" data-id="' + it.id + '"><div class="auto">시작 ' + hm(it.ps) + ' · 마지막 수유 종료에 맞춤 (자동)</div>' +
-        '<label>입면 (잠든 시각)</label>' + timeCtl('ae', d.ae, { now: 'now' }) +
+    // 마지막 수유·입면은 한 세트. 길이가 고정이라 시작을 바꾸면 종료가, 종료를 바꾸면 시작이 따라오고 목욕도 함께 움직인다
+    if (it.type === 'bed' || (it.type === 'feed' && day0 && it.id === bedFeedIdOf(day0))) {
+      return '<div class="editor" data-id="' + it.id + '"><label>시작</label>' + timeCtl('as', d.as, { now: 'now' }) +
+        '<label>종료</label>' + timeCtl('ae', d.ae, { now: 'now' }) +
+        '<div class="dur">' + (d.as != null && d.ae != null ? '시작~종료 ' + fmtDur(d.ae - d.as) : '') + '</div>' +
+        (it.type === 'feed' ? '<label>수유량</label><div class="mlinput"><button class="pm" data-act="mlpm" data-d="-10" aria-label="10ml 빼기">−</button><input type="number" inputmode="numeric" step="10" min="0" max="999" data-f="ml" value="' + (d.ml != null ? d.ml : '') + '" placeholder="예: 150"><button class="pm" data-act="mlpm" data-d="10" aria-label="10ml 더하기">+</button><span>ml</span></div>' : '') +
+        '<div class="auto">목욕 ' + BATH_LEN + '분 · 수유 ' + LAST_FEED_LEN + '분 · 입면 ' + BED_LEN + '분은 한 세트로 함께 움직여요</div>' +
         '<div class="actions"><button class="btn secondary small" data-act="cancel">취소</button><button class="btn small" data-act="save">저장</button></div></div>';
     }
     return '<div class="editor" data-id="' + it.id + '">' +
@@ -952,7 +998,6 @@
     pe.items = normalizeItems(pe.items);
     var sorted = pe.items;
     sorted.forEach(function (x) {
-      if (x.t !== 'bed' && x.t !== 'bath') return;
       var card = document.querySelector('.pecard[data-k="' + x.k + '"] .auto');
       if (card) card.textContent = autoText(x);
     });
@@ -974,6 +1019,7 @@
   function setDraft(f, v) {
     var d = ui.draft; if (!d || v == null) return;
     if (f === 'as' && d.as != null && d.ae != null) d.ae = d.ae + (v - d.as);
+    if (f === 'ae' && d.fixed && d.as != null && d.ae != null) d.as = d.as + (v - d.ae);   // 길이 고정(마지막 수유·입면): 종료를 바꾸면 시작이 따라온다
     d[f] = v;
   }
   // 카드를 위/아래 이웃과 바꾼다. 각 카드의 길이와 두 카드 사이 간격은 그대로 두고 자리만 바꾼다
@@ -995,12 +1041,16 @@
     if (f === 's') {
       var delta = v - x.s;
       if (x.t === 'wake') { pe.items.forEach(function (y) { if (y !== x) { y.s += delta; y.e += delta; } }); x.s = v; x.e = v; return; }
-      if (x.t === 'feed' && xi === lastFeedIdx(pe.items)) {
-        var bath = pe.items[xi - 1]; if (bath && bath.t === 'bath') { bath.s += delta; bath.e += delta; }
-      }
-      if (x.t === 'bath') { x.s = Math.min(v, x.e); return; }   // 목욕은 종료가 마지막 수유 시작에 붙어 있어 시작만 움직인다
+      // 목욕·마지막 수유·입면 중 어느 카드의 시작을 바꿔도 세트 전체가 같은 폭으로 움직인다 (나머지는 normalizeItems가 다시 맞춘다)
+      var lfiS = lastFeedIdx(pe.items), lfS = pe.items[lfiS];
+      if (lfS && (x.t === 'bath' || x.t === 'bed' || xi === lfiS)) { lfS.s += delta; lfS.e = lfS.s + LAST_FEED_LEN; return; }
       x.e = x.e + delta; x.s = v;
-    } else x.e = v;
+    } else {
+      // 마지막 수유·입면은 길이가 고정이라 종료를 바꾸면 세트 전체가 같은 폭으로 움직인다
+      var lfiE = lastFeedIdx(pe.items), lfE = pe.items[lfiE];
+      if (lfE && (x.t === 'bed' || xi === lfiE)) { lfE.s += v - x.e; lfE.e = lfE.s + LAST_FEED_LEN; return; }
+      x.e = v;
+    }
   }
 
   // ---- 공유 저장소 (Firebase Realtime Database REST). 링크를 연 모두가 같은 일정을 본다 ----
@@ -1046,6 +1096,14 @@
         var r = rd.rec[key], l = ld.rec[key];
         if (!l || (r.u || 0) > (l.u || 0)) { ld.rec[key] = r; dayChanged = true; }
       });
+      // 순간 기록(대변)은 항목별로 나중에 고친 쪽이 이긴다
+      if (rd.ev) {
+        ld.ev = ld.ev || {};
+        Object.keys(rd.ev).forEach(function (key) {
+          var r = rd.ev[key], l = ld.ev[key];
+          if (r && (!l || (r.u || 0) > (l.u || 0))) { ld.ev[key] = r; changed = true; }
+        });
+      }
       if (dayChanged) { if (!ld.del) buildDay(ld); changed = true; }
     });
     if (remote.def && (remote.def.u || 0) > ((state.def && state.def.u) || 0)) { state.def = remote.def; changed = true; }
@@ -1057,7 +1115,13 @@
   }
 
   // ---- 확인창 ----
-  function askConfirm(msg, fn) { pendingConfirm = fn; document.getElementById('modalMsg').textContent = msg; document.getElementById('modal').hidden = false; }
+  function askConfirm(msg, fn, okLabel, cancelLabel) {
+    pendingConfirm = fn; document.getElementById('modalMsg').textContent = msg;
+    document.getElementById('modalOk').textContent = okLabel || '확인';
+    document.getElementById('modalCancel').textContent = cancelLabel || '취소';
+    document.getElementById('modalActions').className = 'actions' + (okLabel ? ' yn' : '');   // (응)(아니)는 응이 먼저
+    document.getElementById('modal').hidden = false;
+  }
   function closeConfirm() { pendingConfirm = null; document.getElementById('modal').hidden = true; }
 
   // ---- 이벤트 ----
@@ -1112,9 +1176,43 @@
       });
       return;
     }
+    // 대변 기록: 떠 있는 버튼 → 확인창 → 지금 시각으로 카드 등록
+    if (act === 'poop') {
+      if (!getDay(todayKey())) return;
+      askConfirm('소금이 똥 쌌어요?', function () {
+        var dayP = getDay(todayKey()); if (!dayP) return;
+        var at = nowMin(); dayP.ev = dayP.ev || {};
+        dayP.ev[sid()] = { t: 'poop', at: at, u: now() };
+        save(); render(); toast('대변 ' + hm(at) + ' 기록했어요');
+      }, '응', '아니');
+      return;
+    }
+    if (id && id.indexOf('ev:') === 0) {
+      var dayE = getDay(todayKey()), eid = id.slice(3), evE = dayE && dayE.ev ? dayE.ev[eid] : null;
+      if (!evE) return;
+      if (act === 'toggle') {
+        if (ui.open === id) { ui.open = null; ui.draft = null; } else { ui.open = id; ui.draft = { as: evE.at, ae: null, ml: null }; }
+        render(); return;
+      }
+      if (act === 'save' && ui.draft) {
+        dayE.ev[eid] = { t: evE.t || 'poop', at: ui.draft.as != null ? ui.draft.as : evE.at, u: now() };
+        ui.open = null; ui.draft = null; save(); render(); toast('고쳤어요'); return;
+      }
+      if (act === 'del-ev') {
+        askConfirm('대변 ' + hm(evE.at) + ' 기록을 지울까요?', function () {
+          dayE.ev[eid] = { del: true, u: now() };
+          ui.open = null; ui.draft = null; save(); render(); toast('기록을 지웠어요');
+        });
+        return;
+      }
+    }
     if (act === 'toggle') {
       if (ui.open === id) { ui.open = null; ui.draft = null; }
-      else { ui.open = id; ui.draft = { as: it.ps, ae: it.type === 'wake' ? null : it.pe, ml: it.ml != null ? it.ml : null }; }   // 기록이 없으면 계산된 계획 시각이 기본값
+      else {
+        var dayT = getDay(todayKey());
+        ui.open = id; ui.draft = { as: it.ps, ae: it.type === 'wake' ? null : it.pe, ml: it.ml != null ? it.ml : null,   // 기록이 없으면 계산된 계획 시각이 기본값
+          fixed: it.type === 'bed' || !!(dayT && it.id === bedFeedIdOf(dayT)) };
+      }
       render(); return;
     }
     if (act === 'cancel') { ui.open = null; ui.draft = null; render(); return; }
@@ -1123,6 +1221,16 @@
       if (it.type === 'wake') {
         var ws = ui.draft.as != null ? ui.draft.as : day.start;
         day.rec.wake = { as: ws, ae: null, u: now() }; day.start = ws; day.su = now();   // 기상 시각 = 하루의 시작. 모든 카드가 그만큼 함께 움직인다
+      } else if (it.type === 'bath' || it.type === 'bed' || it.id === bedFeedIdOf(day)) {
+        // 마지막 세트: 어느 카드를 고쳐도 마지막 수유 시작 하나만 기록한다. 목욕·입면은 거기서 계산되어 함께 움직인다
+        var bfId = bedFeedIdOf(day), rS = (bfId && day.rec[bfId]) || {}, hadS = rS.as != null, movedS = ui.draft.as !== it.ps;
+        var fS = it.type === 'bath' ? ui.draft.as + BATH_LEN : it.type === 'bed' ? ui.draft.as - LAST_FEED_LEN : ui.draft.as;
+        var mlS = it.type === 'feed' ? (ui.draft.ml != null ? ui.draft.ml : null) : (rS.ml != null ? rS.ml : null);
+        if (bfId) {
+          if (movedS) day.rec[bfId] = { as: fS, ae: fS + LAST_FEED_LEN, ml: mlS, u: now() };
+          else if (hadS) day.rec[bfId] = { as: rS.as, ae: rS.as + LAST_FEED_LEN, ml: mlS, u: now() };
+          else if (it.type === 'feed') day.rec[bfId] = { as: null, ae: null, ml: mlS, u: now() };   // 수유량만 바꾼 경우
+        }
       } else if (it.type === 'feed') {
         // 수유량만 바꾸고 시각은 손대지 않았으면 시각은 기록하지 않는다 (계획 시각이 실제 기록으로 굳지 않게)
         var r0 = day.rec[it.id] || {}, hadTime = r0.as != null || r0.ae != null;
@@ -1130,11 +1238,7 @@
         var mlChanged = (ui.draft.ml != null ? ui.draft.ml : null) !== (it.ml != null ? it.ml : null);
         var onlyMl = mlChanged && !timeChanged && !hadTime;
         day.rec[it.id] = { as: onlyMl ? null : ui.draft.as, ae: onlyMl ? null : ui.draft.ae, ml: ui.draft.ml != null ? ui.draft.ml : null, u: now() };
-        // 마지막 수유를 옮기면 목욕은 계산으로 따라오고, 기록해 둔 잠든 시각도 같은 폭만큼 따라간다 (목욕·수유·입면은 한 세트)
-        var bedR = day.rec.bed;
-        if (timeChanged && it.id === bedFeedIdOf(day) && bedR && bedR.ae != null) day.rec.bed = { as: null, ae: bedR.ae + (ui.draft.ae - it.pe), u: now() };
-      } else if (it.type === 'bed') day.rec.bed = { as: null, ae: ui.draft.ae, u: now() };
-      else day.rec[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
+      } else day.rec[it.id] = { as: ui.draft.as, ae: ui.draft.ae, u: now() };
       ui.open = null; ui.draft = null;
       var r = buildDay(day); save(); render();
       toast('입면 ' + hm(r.bedEnd) + ' 예정');
@@ -1174,7 +1278,7 @@
       var t = b.dataset.t, list = ui.pe.items, lfi0 = lastFeedIdx(list);
       var card;
       if (t === 'bath') {
-        var lf0 = list[lfi0]; card = { k: newKey(), t: 'bath', s: lf0.s - 15, e: lf0.s };
+        var lf0 = list[lfi0]; card = { k: newKey(), t: 'bath', s: lf0.s - BATH_LEN, e: lf0.s };
         list.splice(lfi0, 0, card);
       } else {
         // 마지막 수유(와 그 앞 목욕) 앞에 넣는다. 시각은 그 앞 카드 종료부터
